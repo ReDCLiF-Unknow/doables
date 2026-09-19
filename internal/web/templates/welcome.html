@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Doables</title>
+  {{template "assets"}}
+</head>
+<body>
+<div class="page page-center">
+  <div class="container container-tight py-4">
+    <div class="text-center mb-4">
+      <span class="avatar avatar-lg bg-primary text-white"><i class="ti ti-checklist fs-1"></i></span>
+      <div class="h1 mt-3 mb-0">Doables</div>
+    </div>
+
+    <div class="card card-md">
+      <div class="card-body">
+        <h2 class="h2 text-center mb-1">{{.Heading}}</h2>
+        <p class="text-secondary text-center mb-4">{{.Subtitle}}</p>
+        {{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
+        <form method="post" action="{{.Action}}">
+          {{if .NeedName}}
+          <div class="mb-3">
+            <label class="form-label" for="name">Your name</label>
+            <input id="name" type="text" name="name" class="form-control" placeholder="e.g. Alex" required maxlength="40" autofocus autocomplete="nickname">
+          </div>
+          {{end}}
+          <input type="hidden" name="next" value="{{.Next}}">
+          <button type="submit" class="btn btn-primary w-100">{{.Button}}</button>
+        </form>
+      </div>
+    </div>
+
+    {{if .ShowToken}}
+    <details class="text-center text-secondary mt-3">
+      <summary class="small" style="cursor:pointer">Already use Doables on another device?</summary>
+      <form method="post" action="/welcome/token" class="mt-2">
+        <input type="hidden" name="next" value="{{.Next}}">
+        <div class="input-group">
+          <input type="text" name="token" class="form-control" placeholder="Paste your token (from your Profile)" required autocomplete="off">
+          <button class="btn" type="submit">Sign in</button>
+        </div>
+      </form>
+    </details>
+    {{end}}
+  </div>
+</div>
+</body>
+</html>

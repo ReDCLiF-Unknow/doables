@@ -1,0 +1,110 @@
+{{define "assets"}}
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E✅%3C/text%3E%3C/svg%3E">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try { document.documentElement.setAttribute('data-bs-theme', localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')); } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0/dist/css/tabler.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <style>
+    :root { --tblr-font-sans-serif: 'Inter', system-ui, sans-serif; }
+    body { font-feature-settings: "cv11", "ss01"; }
+    /* Subtle dot grid that follows the light/dark theme */
+    .page-wrapper, .page-center {
+      background-image: radial-gradient(circle, color-mix(in srgb, var(--tblr-body-color) 14%, transparent) 1.2px, transparent 1.4px);
+      background-size: 22px 22px;
+    }
+    /* Keep the count badge vertically centred on the row (Tabler pins it to the corner) */
+    .navbar-vertical .nav-link { align-items: center; }
+    .navbar-vertical .nav-link .badge { position: static !important; transform: none !important; margin-left: 0; }
+    .task-row { transition: background .15s; }
+    .task-row:hover { background: var(--tblr-bg-surface-secondary); }
+    .task-row .task-actions { opacity: 0; transition: opacity .15s; }
+    .task-row:hover .task-actions, .task-row:focus-within .task-actions { opacity: 1; }
+    @media (hover: none) { .task-row .task-actions { opacity: 1; } }
+    .task-done .task-title { text-decoration: line-through; color: var(--tblr-secondary); }
+    .task-done .task-desc { opacity: .6; }
+    .form-check-input.task-check { width: 1.35rem; height: 1.35rem; margin-top: 0; cursor: pointer; border-radius: 50%; }
+    .list-card { transition: transform .15s, box-shadow .15s; }
+    .list-card:hover { transform: translateY(-2px); box-shadow: var(--tblr-box-shadow-card); }
+    :root[data-bs-theme="dark"] .icon-to-dark, :root:not([data-bs-theme="dark"]) .icon-to-light { display: none; }
+    .stat-icon { width: 2.5rem; height: 2.5rem; }
+    /* Tabler's negative margin on the last avatar would overlap the Share button */
+    .avatar-list-stacked .avatar:last-child { margin-right: 0 !important; }
+    .avatar-list-stacked .avatar { box-shadow: 0 0 0 2px var(--tblr-bg-surface); }
+    /* Tabler lets a vertical navbar's nav grow to fill the sidebar; with several
+       sections stacked, keep each at its natural height so the user chip sits last. */
+    .navbar-vertical .navbar-collapse > .navbar-nav { flex: 0 0 auto !important; }
+    /* The "+" beside the Lists heading */
+    .sidebar-add { color: var(--tblr-secondary); border: 0; background: transparent; }
+    .sidebar-add:hover, .sidebar-add.active { color: #fff; background: rgba(255, 255, 255, .1); }
+    .sidebar-user { border-top: 1px solid var(--tblr-border-color-translucent, rgba(255,255,255,.1)); }
+
+    /* Inline editing: [data-edit-scope] toggles between its view and its form */
+    [data-edit-scope] [data-edit-form] { display: none; }
+    [data-edit-scope].is-editing [data-edit-form] { display: block; }
+    [data-edit-scope].is-editing [data-edit-view] { display: none; }
+    .rename-btn { opacity: 0; transition: opacity .15s; }
+    .page-title-wrap:hover .rename-btn, .rename-btn:focus { opacity: 1; }
+    @media (hover: none) { .rename-btn { opacity: 1; } }
+
+    /* Toasts (e.g. "Task deleted · Undo") */
+    #toasts { position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 2000;
+              display: flex; flex-direction: column; gap: .5rem; align-items: center; pointer-events: none; }
+    .toast-item { pointer-events: auto; display: flex; align-items: center; gap: 1rem; padding: .6rem .9rem;
+                  border-radius: var(--tblr-border-radius); background: #1d273b; color: #fff; font-size: .875rem;
+                  box-shadow: 0 6px 24px rgba(0,0,0,.35); animation: toast-in .18s ease-out; }
+    .toast-item button { background: none; border: 0; color: #6ea8fe; font-weight: 600; padding: 0; cursor: pointer; }
+    .toast-item button:hover { text-decoration: underline; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  </style>
+{{end}}
+
+{{/* One task, shown on a list page or in the Today view. Argument: taskRow. */}}
+{{define "taskrow"}}{{with .Task}}
+<div class="list-group-item task-row{{if .Done}} task-done{{end}}" data-edit-scope>
+  <div class="row align-items-center g-3" data-edit-view>
+    <div class="col-auto">
+      <form method="post" action="/tasks/{{.ID}}/toggle" data-inplace>
+        <input type="hidden" name="next" value="{{$.Path}}">
+        <input type="checkbox" class="form-check-input task-check" {{if .Done}}checked{{end}} aria-label="{{if .Done}}Mark as not done{{else}}Mark as done{{end}}">
+      </form>
+    </div>
+    <div class="col">
+      <div class="task-title fw-medium">{{.Title}}</div>
+      {{if .Description}}<div class="task-desc text-secondary small">{{.Description}}</div>{{end}}
+      {{if $.ShowList}}<a class="small text-secondary text-decoration-none" href="/lists/{{.ListID}}"><i class="ti ti-list-check me-1"></i>{{.ListName}}</a>{{end}}
+      {{if $.ShowWho}}
+        {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
+        {{else if .AddedBy}}<div class="text-secondary small"><i class="ti ti-user me-1"></i>Added by {{.AddedBy}}</div>{{end}}
+      {{end}}
+    </div>
+    {{if .DueDate}}
+    <div class="col-auto">
+      <span class="badge {{dueClass .DueDate $.Today .Done}}" title="Due {{.DueDate}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today}}</span>
+    </div>
+    {{end}}
+    <div class="col-auto task-actions d-flex gap-1">
+      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-edit-toggle title="Edit task" aria-label="Edit task"><i class="ti ti-pencil"></i></button>
+      <form method="post" action="/tasks/{{.ID}}/delete" data-inplace data-undo>
+        <input type="hidden" name="next" value="{{$.Path}}">
+        <button type="submit" class="btn btn-icon btn-sm btn-ghost-danger" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>
+      </form>
+    </div>
+  </div>
+
+  <form method="post" action="/tasks/{{.ID}}/edit" data-inplace data-edit-form>
+    <input type="hidden" name="next" value="{{$.Path}}">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-4"><input type="text" name="title" class="form-control" value="{{.Title}}" required maxlength="200" aria-label="Title"></div>
+      <div class="col-md-4"><input type="text" name="description" class="form-control" value="{{.Description}}" placeholder="Description" maxlength="500" aria-label="Description"></div>
+      <div class="col-md-2"><input type="date" name="due" class="form-control" value="{{.DueDate}}" aria-label="Due date"></div>
+      <div class="col-md-2 d-flex gap-1">
+        <button type="submit" class="btn btn-primary flex-fill">Save</button>
+        <button type="button" class="btn btn-icon" data-edit-toggle title="Cancel" aria-label="Cancel"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+  </form>
+</div>
+{{end}}{{end}}

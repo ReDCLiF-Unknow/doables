@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if eq .View "today"}}Today · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
+  {{template "assets"}}
+</head>
+<body>
+<div class="page">
+
+  <!-- Sidebar -->
+  <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+    <div class="container-fluid">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <h1 class="navbar-brand navbar-brand-autodark">
+        <a href="/" class="d-flex align-items-center text-decoration-none">
+          <span class="avatar avatar-sm bg-primary text-white me-2"><i class="ti ti-checklist"></i></span>
+          <span class="fw-bold">Doables</span>
+        </a>
+      </h1>
+      <div class="collapse navbar-collapse" id="sidebar-menu">
+        <ul class="navbar-nav pt-lg-3">
+          <li class="nav-item">
+            <a class="nav-link{{if eq .View "dashboard"}} active{{end}}" href="/">
+              <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-layout-dashboard"></i></span>
+              <span class="nav-link-title">Overview</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link{{if eq .View "today"}} active{{end}}" href="/today">
+              <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-calendar-event"></i></span>
+              <span class="nav-link-title">Today</span>
+              <span class="ms-auto" data-live="today-badge">{{if .TodayCount}}<span class="badge {{if .TodayOverdue}}bg-red-lt text-red{{else}}bg-orange-lt text-orange{{end}}">{{.TodayCount}}</span>{{end}}</span>
+            </a>
+          </li>
+        </ul>
+
+        <div class="px-3 mt-3 mb-1">
+          <div class="d-flex align-items-center">
+            <div class="text-uppercase text-secondary small fw-bold flex-fill">Lists</div>
+            <button type="button" class="btn btn-icon btn-sm sidebar-add" id="new-list-toggle" title="New list" aria-label="New list" aria-expanded="false" aria-controls="new-list-form"><i class="ti ti-plus"></i></button>
+          </div>
+          <form method="post" action="/lists" id="new-list-form" class="d-none mt-1 mb-2">
+            <input type="text" name="name" class="form-control form-control-sm" placeholder="List name, then Enter" required maxlength="80" aria-label="New list name" autocomplete="off">
+          </form>
+        </div>
+
+        <ul class="navbar-nav" data-live="sidebar-lists">
+          {{range .Lists}}
+          <li class="nav-item">
+            <a class="nav-link{{if and $.Current (eq $.Current.ID .ID)}} active{{end}}" href="/lists/{{.ID}}">
+              <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-list-check"></i></span>
+              <span class="nav-link-title text-truncate">{{.Name}}</span>
+              <span class="ms-auto d-flex align-items-center gap-2">
+                {{if gt .Members 1}}<i class="ti ti-users text-secondary" title="Shared with {{.Members}} people"></i>{{end}}
+                {{if .Open}}<span class="badge bg-blue-lt text-blue">{{.Open}}</span>{{else if .Total}}<i class="ti ti-circle-check-filled text-green"></i>{{end}}
+              </span>
+            </a>
+          </li>
+          {{end}}
+        </ul>
+
+        <a href="#profile-modal" class="sidebar-user d-flex align-items-center text-decoration-none text-reset mt-auto pt-3 pb-1 px-3" data-bs-toggle="modal" title="Your profile" id="profile-open">
+          <span class="d-flex align-items-center flex-fill" style="min-width:0" data-live="me-chip">
+            <span class="avatar avatar-sm rounded-circle bg-{{color .User.ID}}-lt me-2">{{initial .User.Name}}</span>
+            <span class="flex-fill text-truncate">{{.User.Name}}</span>
+          </span>
+          <i class="ti ti-settings text-secondary"></i>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <div class="page-wrapper">
+
+    <!-- Header -->
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row g-2 align-items-center" data-live="header">
+          <div class="col">
+            {{if eq .View "today"}}
+              <div class="page-pretitle">Across all your lists</div>
+              <h2 class="page-title">Today</h2>
+            {{else if .Current}}
+              <div class="page-pretitle">List</div>
+              <div class="page-title-wrap" data-edit-scope>
+                <h2 class="page-title d-flex align-items-center" data-edit-view>
+                  <span class="text-truncate">{{.Current.Name}}</span>
+                  <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary ms-2 rename-btn" data-edit-toggle title="Rename list" aria-label="Rename list"><i class="ti ti-pencil"></i></button>
+                </h2>
+                <form method="post" action="/lists/{{.Current.ID}}/rename" data-inplace data-edit-form>
+                  <input type="hidden" name="next" value="{{.Path}}">
+                  <div class="input-group">
+                    <input type="text" name="name" class="form-control" value="{{.Current.Name}}" required maxlength="80" aria-label="List name">
+                    <button class="btn btn-primary" type="submit">Save</button>
+                    <button class="btn btn-icon" type="button" data-edit-toggle title="Cancel" aria-label="Cancel"><i class="ti ti-x"></i></button>
+                  </div>
+                </form>
+              </div>
+            {{else}}
+              <div class="page-pretitle">Dashboard</div>
+              <h2 class="page-title">Your task lists</h2>
+            {{end}}
+          </div>
+          <div class="col-auto ms-auto d-flex align-items-center gap-2">
+            {{with .Current}}
+              {{if not .Public}}
+              <a href="#share-modal" class="d-flex text-decoration-none me-1" data-bs-toggle="modal" title="Who's on this list">
+                <span class="avatar-list avatar-list-stacked">
+                  {{range $.Members}}<span class="avatar avatar-sm rounded-circle bg-{{color .ID}}-lt" title="{{.Name}}">{{initial .Name}}</span>{{end}}
+                </span>
+              </a>
+              <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#share-modal"><i class="ti ti-user-plus me-1"></i>Share</button>
+              {{end}}
+              {{if $.IsOwner}}
+              <form method="post" action="/lists/{{.ID}}/delete" onsubmit="return confirm('Delete this list and all its tasks for everyone?')">
+                <button class="btn btn-outline-danger" type="submit"><i class="ti ti-trash me-1"></i>Delete list</button>
+              </form>
+              {{end}}
+            {{end}}
+            <button class="btn btn-icon" type="button" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+              <i class="ti ti-moon icon-to-dark"></i><i class="ti ti-sun icon-to-light"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="container-xl">
+
+      {{if eq .View "today"}}
+        <!-- Today: everything due, across all lists -->
+        <div data-live="tasks">
+          {{range .Groups}}
+          <div class="card mb-3">
+            <div class="card-header">
+              <h3 class="card-title text-{{.Color}}"><i class="ti ti-{{.Icon}} me-2"></i>{{.Title}}<span class="badge bg-{{.Color}}-lt text-{{.Color}} ms-2">{{len .Tasks}}</span></h3>
+            </div>
+            <div class="list-group list-group-flush">
+              {{range .Tasks}}{{template "taskrow" (row $ .)}}{{end}}
+            </div>
+          </div>
+          {{else}}
+          <div class="card"><div class="card-body">
+            <div class="empty">
+              <div class="empty-icon"><i class="ti ti-confetti fs-1"></i></div>
+              <p class="empty-title">Nothing due</p>
+              <p class="empty-subtitle text-secondary">No overdue or upcoming tasks. Give a task a due date and it will show up here.</p>
+            </div>
+          </div></div>
+          {{end}}
+        </div>
+
+      {{else if .Current}}
+      {{with .Current}}
+        <div data-live="notice">
+        {{if .Public}}
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+          <i class="ti ti-lock-open fs-2 me-3"></i>
+          <div class="flex-fill">
+            <strong>This list is public.</strong> Everyone who can reach this server can see and edit it.
+            Claim it to make it private and share it only with people you invite.
+          </div>
+          <form method="post" action="/lists/{{.ID}}/claim" class="ms-3">
+            <button class="btn btn-warning" type="submit"><i class="ti ti-lock me-1"></i>Claim this list</button>
+          </form>
+        </div>
+        {{end}}
+        </div>
+
+        <!-- Stats -->
+        <div class="row row-cards mb-3" data-live="stats">
+          <div class="col-6 col-md-3">
+            <div class="card card-sm"><div class="card-body"><div class="row align-items-center">
+              <div class="col-auto"><span class="stat-icon bg-blue-lt text-blue rounded d-flex align-items-center justify-content-center"><i class="ti ti-clock fs-2"></i></span></div>
+              <div class="col"><div class="fw-bold fs-3">{{.Open}}</div><div class="text-secondary">Open</div></div>
+            </div></div></div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="card card-sm"><div class="card-body"><div class="row align-items-center">
+              <div class="col-auto"><span class="stat-icon bg-green-lt text-green rounded d-flex align-items-center justify-content-center"><i class="ti ti-check fs-2"></i></span></div>
+              <div class="col"><div class="fw-bold fs-3">{{.Done}}</div><div class="text-secondary">Done</div></div>
+            </div></div></div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="card card-sm"><div class="card-body">
+              <div class="d-flex mb-2"><div class="fw-medium">Progress</div><div class="ms-auto fw-bold">{{.Percent}}%</div></div>
+              <div class="progress progress-lg"><div class="progress-bar bg-green" style="width: {{.Percent}}%" role="progressbar" aria-valuenow="{{.Percent}}" aria-valuemin="0" aria-valuemax="100"></div></div>
+              <div class="text-secondary small mt-2">{{.Done}} of {{.Total}} tasks completed</div>
+            </div></div>
+          </div>
+        </div>
+
+        <!-- Add task (not live-updated, so refreshes never disturb what you're typing) -->
+        <div class="card mb-3">
+          <div class="card-body">
+            <form method="post" action="/lists/{{.ID}}/tasks" data-inplace data-reset>
+              <input type="hidden" name="next" value="{{$.Path}}">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <div class="input-icon">
+                    <span class="input-icon-addon"><i class="ti ti-pencil"></i></span>
+                    <input type="text" name="title" class="form-control" placeholder="What needs doing?" required autofocus maxlength="200">
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="input-icon">
+                    <span class="input-icon-addon"><i class="ti ti-align-left"></i></span>
+                    <input type="text" name="description" class="form-control" placeholder="Description (optional)" maxlength="500">
+                  </div>
+                </div>
+                <div class="col-md-2">
+                  <input type="date" name="due" class="form-control" aria-label="Due date" title="Due date (optional)">
+                </div>
+                <div class="col-md-2 d-grid">
+                  <button class="btn btn-primary" type="submit"><i class="ti ti-plus me-1"></i>Add task</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Task list -->
+        <div class="card" data-live="tasks">
+          <div class="card-header">
+            <ul class="nav nav-pills card-header-pills">
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "all"}} active{{end}}" href="/lists/{{.ID}}">All <span class="badge bg-secondary-lt ms-1">{{.Total}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "open"}} active{{end}}" href="/lists/{{.ID}}?filter=open">Open <span class="badge bg-secondary-lt ms-1">{{.Open}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "done"}} active{{end}}" href="/lists/{{.ID}}?filter=done">Done <span class="badge bg-secondary-lt ms-1">{{.Done}}</span></a></li>
+            </ul>
+          </div>
+          <div class="list-group list-group-flush">
+            {{range $.Tasks}}{{template "taskrow" (row $ .)}}
+            {{else}}
+            <div class="empty">
+              {{if eq $.Filter "all"}}
+              <div class="empty-icon"><i class="ti ti-mood-smile fs-1"></i></div>
+              <p class="empty-title">Nothing here yet</p>
+              <p class="empty-subtitle text-secondary">Add your first task above.</p>
+              {{else if eq $.Filter "open"}}
+              <div class="empty-icon"><i class="ti ti-confetti fs-1"></i></div>
+              <p class="empty-title">All caught up!</p>
+              <p class="empty-subtitle text-secondary">No open tasks in this list.</p>
+              {{else}}
+              <div class="empty-icon"><i class="ti ti-checkbox fs-1"></i></div>
+              <p class="empty-title">Nothing done yet</p>
+              <p class="empty-subtitle text-secondary">Tick a task to move it here.</p>
+              {{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+      {{end}}
+
+      {{else}}
+        <!-- Dashboard -->
+        <div data-live="dash">
+        {{if .Lists}}
+        <div class="row row-cards">
+          {{range .Lists}}
+          <div class="col-md-6 col-lg-4">
+            <a href="/lists/{{.ID}}" class="card card-link list-card text-decoration-none">
+              <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                  <span class="avatar bg-blue-lt text-blue me-3"><i class="ti ti-list-check fs-2"></i></span>
+                  <div class="flex-fill text-truncate">
+                    <div class="fw-bold text-truncate">{{.Name}}</div>
+                    <div class="text-secondary small">{{.Open}} open · {{.Done}} done{{if gt .Members 1}} · <i class="ti ti-users"></i> {{.Members}}{{end}}{{if .Public}} · public{{end}}</div>
+                  </div>
+                  <span class="fw-bold">{{.Percent}}%</span>
+                </div>
+                <div class="progress progress-sm"><div class="progress-bar bg-green" style="width: {{.Percent}}%"></div></div>
+              </div>
+            </a>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="card"><div class="card-body">
+          <div class="empty">
+            <div class="empty-icon"><i class="ti ti-clipboard-list fs-1"></i></div>
+            <p class="empty-title">Create your first list</p>
+            <p class="empty-subtitle text-secondary">Use the “New list…” box in the sidebar to get started, then invite others to finish it with you.</p>
+          </div>
+        </div></div>
+        {{end}}
+        </div>
+      {{end}}
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{{with .Current}}{{if not .Public}}
+<!-- Share dialog -->
+<div class="modal modal-blur fade" id="share-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Share “{{.Name}}”</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" data-live="share">
+        {{$listID := .ID}}
+        <label class="form-label" for="invite-url">Invite link</label>
+        <div class="input-group">
+          <input type="text" id="invite-url" class="form-control" value="{{$.InviteURL}}" readonly onfocus="this.select()">
+          <button class="btn" type="button" id="copy-invite"><i class="ti ti-copy me-1"></i>Copy</button>
+        </div>
+        <div class="form-hint mt-1">Anyone with this link can join, add tasks and tick them off. Send it to the people you want to finish this list with.</div>
+        {{if $.IsOwner}}
+        <form method="post" action="/lists/{{$listID}}/invite/reset" class="mt-1" onsubmit="return confirm('The current link will stop working. Continue?')">
+          <button class="btn btn-link btn-sm p-0 text-secondary" type="submit"><i class="ti ti-refresh me-1"></i>Create a new link</button>
+        </form>
+        {{end}}
+
+        <div class="mt-4">
+          <label class="form-label">People ({{len $.Members}})</label>
+          <div class="list-group list-group-flush">
+            {{range $.Members}}
+            <div class="list-group-item px-0">
+              <div class="row align-items-center g-2">
+                <div class="col-auto"><span class="avatar avatar-sm rounded-circle bg-{{color .ID}}-lt">{{initial .Name}}</span></div>
+                <div class="col text-truncate">
+                  {{.Name}}
+                  {{if eq .ID $.User.ID}}<span class="badge bg-secondary-lt ms-1">You</span>{{end}}
+                  {{if .Owner}}<span class="badge bg-yellow-lt ms-1">Owner</span>{{end}}
+                </div>
+                {{if and $.IsOwner (not .Owner)}}
+                <div class="col-auto">
+                  <form method="post" action="/lists/{{$listID}}/members/{{.ID}}/remove" onsubmit="return confirm('Remove {{.Name}} from this list?')">
+                    <button class="btn btn-icon btn-sm btn-ghost-danger" type="submit" title="Remove" aria-label="Remove {{.Name}}"><i class="ti ti-user-minus"></i></button>
+                  </form>
+                </div>
+                {{end}}
+              </div>
+            </div>
+            {{end}}
+          </div>
+        </div>
+      </div>
+      {{if not $.IsOwner}}
+      <div class="modal-footer">
+        <form method="post" action="/lists/{{.ID}}/leave" onsubmit="return confirm('Leave this list? You will need a new invite to get back in.')">
+          <button class="btn btn-outline-danger" type="submit"><i class="ti ti-logout me-1"></i>Leave list</button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}{{end}}
+
+<!-- Profile dialog -->
+<div class="modal modal-blur fade" id="profile-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Your profile</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center mb-4">
+          <span data-live="me-avatar"><span class="avatar avatar-lg rounded-circle bg-{{color .User.ID}}-lt">{{initial .User.Name}}</span></span>
+          <div class="ms-3 text-secondary">Shown next to the tasks you add and finish.</div>
+        </div>
+        <form method="post" action="/me" data-inplace data-toast="Name updated">
+          <input type="hidden" name="next" value="{{.Path}}">
+          <label class="form-label" for="profile-name">Display name</label>
+          <div class="input-group">
+            <input id="profile-name" type="text" name="name" class="form-control" value="{{.User.Name}}" required maxlength="40" autocomplete="nickname">
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+
+        <hr class="my-4">
+
+        <h6 class="mb-1"><i class="ti ti-key me-1"></i>Your sign-in token</h6>
+        <p class="text-secondary small mb-2">This token is <strong>you</strong> on Doables. Paste it on another device to sign in as yourself, or give it to the command-line tool.</p>
+        <div class="input-group">
+          <input type="password" id="token" class="form-control" readonly placeholder="••••••••••••••••••••••••" aria-label="Sign-in token">
+          <button class="btn" type="button" id="toggle-token" title="Show or hide" aria-label="Show or hide token"><i class="ti ti-eye"></i></button>
+          <button class="btn" type="button" id="copy-token"><i class="ti ti-copy me-1"></i>Copy</button>
+        </div>
+        <div class="form-hint mt-1">Keep it secret: anyone who has it can act as you. Clearing your browser's cookies without saving it means losing this identity.</div>
+        <div class="mt-2 small text-secondary">CLI: <code>DOABLES_TOKEN=&lt;token&gt; doables lists</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0/dist/js/tabler.min.js"></script>
+<script>
+(function () {
+  // ---- theme ----
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    var root = document.documentElement;
+    var next = root.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-bs-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+
+  // ---- toasts ----
+  var box = document.getElementById('toasts');
+  function toast(message, action, ms) {
+    var el = document.createElement('div');
+    el.className = 'toast-item';
+    var text = document.createElement('span');
+    text.textContent = message;
+    el.appendChild(text);
+    if (action) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = action.label;
+      btn.addEventListener('click', function () { el.remove(); action.run(); });
+      el.appendChild(btn);
+    }
+    box.appendChild(el);
+    setTimeout(function () { el.remove(); }, ms || 6000);
+  }
+
+  // ---- live regions ----
+  // Any element with data-live="name" is refreshed in place when the server
+  // sends a fresh copy of the page. Regions being edited are left alone.
+  var pending = false;
+
+  function isEditing(el) {
+    var a = document.activeElement;
+    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return true;
+    return !!el.querySelector('.is-editing');
+  }
+
+  function apply(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.title) document.title = doc.title;
+    document.querySelectorAll('[data-live]').forEach(function (cur) {
+      var fresh = doc.querySelector('[data-live="' + cur.getAttribute('data-live') + '"]');
+      if (!fresh || fresh.innerHTML === cur.innerHTML) return;
+      if (isEditing(cur)) { pending = true; return; }
+      cur.innerHTML = fresh.innerHTML;
+    });
+  }
+
+  function flushPending() {
+    if (pending) { pending = false; refresh(); }
+  }
+
+  // Fetch the current page again and swap in whatever changed.
+  var inflight = false, again = false;
+  function refresh() {
+    if (inflight) { again = true; return; }
+    inflight = true;
+    fetch(location.pathname + location.search, { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+      .then(function (res) {
+        if (res.redirected && new URL(res.url).pathname === '/welcome') { location.href = res.url; return; }
+        if (res.status === 404) { location.href = '/'; return; } // the list was deleted, or we lost access
+        if (res.ok) return res.text().then(apply);
+      })
+      .catch(function () {})
+      .then(function () { inflight = false; if (again) { again = false; refresh(); } });
+  }
+  var timer;
+  function scheduleRefresh() { clearTimeout(timer); timer = setTimeout(refresh, 120); }
+
+  // Server-sent events: the server says "something changed", we re-fetch.
+  if (window.EventSource) {
+    var es = new EventSource('/events'), opened = false;
+    es.addEventListener('changed', scheduleRefresh);
+    es.onopen = function () { if (opened) scheduleRefresh(); opened = true; }; // catch up after a reconnect
+  }
+
+  // ---- in-place form submits ----
+  // POST the form, follow the redirect back to this page, and swap the result in.
+  function post(url, params) {
+    return fetch(url, { method: 'POST', body: params, headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+      .then(function (res) {
+        if (res.redirected && new URL(res.url).pathname === '/welcome') { location.href = res.url; return null; }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var there = new URL(res.url);
+        if (there.pathname + there.search !== location.pathname + location.search) { location.href = res.url; return null; }
+        return res.text();
+      });
+  }
+
+  function restore(taskID) {
+    post('/tasks/' + taskID + '/restore', new URLSearchParams({ next: location.pathname + location.search }))
+      .then(function (html) { if (html !== null) apply(html); })
+      .catch(function () { toast('Could not restore the task.'); });
+  }
+
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('[data-inplace]')) return;
+    e.preventDefault();
+    var params = new URLSearchParams(new FormData(form));
+    var undoID = null;
+    if (form.hasAttribute('data-undo')) undoID = new URL(form.action).pathname.split('/')[2];
+    post(form.action, params).then(function (html) {
+      if (html === null) return;
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      var scope = form.closest('.is-editing');
+      if (scope) scope.classList.remove('is-editing');
+      if (form.hasAttribute('data-reset')) {
+        form.reset();
+        var first = form.querySelector('input[type=text]');
+        if (first) first.focus();
+      }
+      pending = false;
+      apply(html);
+      if (form.dataset.toast) toast(form.dataset.toast, null, 3000);
+      if (undoID) toast('Task deleted', { label: 'Undo', run: function () { restore(undoID); } }, 8000);
+    }).catch(function () { toast('Something went wrong. Please try again.'); });
+  });
+
+  // Ticking a checkbox saves straight away.
+  document.addEventListener('change', function (e) {
+    if (e.target.matches && e.target.matches('.task-check')) {
+      var form = e.target.form;
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    }
+  });
+
+  // ---- inline editing ----
+  document.addEventListener('click', function (e) {
+    var toggle = e.target.closest('[data-edit-toggle]');
+    if (toggle) {
+      var scope = toggle.closest('[data-edit-scope]');
+      scope.classList.toggle('is-editing');
+      if (scope.classList.contains('is-editing')) {
+        var input = scope.querySelector('[data-edit-form] input[type=text]');
+        if (input) { input.focus(); input.select(); }
+      } else {
+        flushPending();
+      }
+      return;
+    }
+    var eye = e.target.closest('#toggle-token');
+    if (eye) {
+      loadToken().then(function () { tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password'; });
+      return;
+    }
+    var copyToken = e.target.closest('#copy-token');
+    if (copyToken) {
+      loadToken().then(function () {
+        return navigator.clipboard ? navigator.clipboard.writeText(tokenInput.value) : Promise.reject();
+      }).catch(function () {
+        var was = tokenInput.type; tokenInput.type = 'text'; tokenInput.select(); document.execCommand('copy'); tokenInput.type = was;
+      }).then(function () { copyToken.innerHTML = '<i class="ti ti-check me-1"></i>Copied'; });
+      return;
+    }
+    var copy = e.target.closest('#copy-invite');
+    if (copy) {
+      var url = document.getElementById('invite-url');
+      (navigator.clipboard ? navigator.clipboard.writeText(url.value) : Promise.reject()).catch(function () {
+        url.select(); document.execCommand('copy');
+      }).then(function () { copy.innerHTML = '<i class="ti ti-check me-1"></i>Copied'; });
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var scope = e.target.closest && e.target.closest('.is-editing');
+    if (scope) { scope.classList.remove('is-editing'); flushPending(); }
+  });
+
+  // ---- "+" next to Lists: reveal an inline field for a new list's name ----
+  var addBtn = document.getElementById('new-list-toggle');
+  var addForm = document.getElementById('new-list-form');
+  if (addBtn && addForm) {
+    var addInput = addForm.querySelector('input[name=name]');
+    function setAdding(open) {
+      addForm.classList.toggle('d-none', !open);
+      addBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      addBtn.classList.toggle('active', open);
+      if (open) addInput.focus(); else addInput.value = '';
+    }
+    addBtn.addEventListener('click', function () { setAdding(addForm.classList.contains('d-none')); });
+    addInput.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setAdding(false); addBtn.focus(); } });
+    // Clicking away from an empty field puts it back (but not when clicking the + itself).
+    addInput.addEventListener('blur', function (e) {
+      if (addInput.value === '' && e.relatedTarget !== addBtn) setAdding(false);
+    });
+  }
+
+  // ---- profile dialog: the token is fetched only when asked for, and forgotten on close ----
+  var tokenInput = document.getElementById('token');
+  var tokenLoaded = false;
+  function loadToken() {
+    if (tokenLoaded) return Promise.resolve();
+    return fetch('/me/token', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { tokenInput.value = data.token; tokenLoaded = true; });
+  }
+  document.getElementById('profile-modal').addEventListener('hidden.bs.modal', function () {
+    tokenInput.value = ''; tokenInput.type = 'password'; tokenLoaded = false;
+    document.getElementById('copy-token').innerHTML = '<i class="ti ti-copy me-1"></i>Copy';
+  });
+
+  // Re-open a dialog when the URL asks for one (#share after sharing actions, #profile from old /me links).
+  var wanted = { '#share': '[data-bs-target="#share-modal"]', '#profile': '#profile-open' }[location.hash];
+  var opener = wanted && document.querySelector(wanted);
+  if (opener) opener.click();
+})();
+</script>
+</body>
+</html>
