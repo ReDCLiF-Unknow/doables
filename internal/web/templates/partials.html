@@ -1,5 +1,12 @@
 {{define "assets"}}
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E✅%3C/text%3E%3C/svg%3E">
+  <!-- Installable as an app: "Add to Home Screen" gives it its own icon and a window without browser chrome -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="theme-color" content="#1d273b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Doables">
   <script>
     // Apply the saved theme before first paint to avoid a flash.
     try { document.documentElement.setAttribute('data-bs-theme', localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')); } catch (e) {}
@@ -25,7 +32,9 @@
     @media (hover: none) { .task-row .task-actions { opacity: 1; } }
     .task-done .task-title { text-decoration: line-through; color: var(--tblr-secondary); }
     .task-done .task-desc { opacity: .6; }
-    .form-check-input.task-check { width: 1.35rem; height: 1.35rem; margin-top: 0; cursor: pointer; border-radius: 50%; }
+    .form-check-input.task-check { width: 1.35rem; height: 1.35rem; margin: 0; cursor: pointer; border-radius: 50%; }
+    /* The whole padded label is the tap target, so the tick is easy to hit without changing the layout */
+    .task-check-wrap { display: flex; padding: .6rem; margin: -.6rem; cursor: pointer; }
     .list-card { transition: transform .15s, box-shadow .15s; }
     .list-card:hover { transform: translateY(-2px); box-shadow: var(--tblr-box-shadow-card); }
     :root[data-bs-theme="dark"] .icon-to-dark, :root:not([data-bs-theme="dark"]) .icon-to-light { display: none; }
@@ -58,6 +67,40 @@
     .toast-item button { background: none; border: 0; color: #6ea8fe; font-weight: 600; padding: 0; cursor: pointer; }
     .toast-item button:hover { text-decoration: underline; }
     @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* ---- Phones and tablets ---- */
+    .mobile-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; display: flex;
+                   background: var(--tblr-bg-surface); border-top: 1px solid var(--tblr-border-color);
+                   padding-bottom: env(safe-area-inset-bottom); }
+    .mobile-tabs a { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                     gap: 2px; min-height: 56px; color: var(--tblr-secondary); text-decoration: none; font-size: .7rem; }
+    .mobile-tabs a i { font-size: 1.45rem; line-height: 1; }
+    .mobile-tabs a.active { color: var(--tblr-primary); }
+    .mobile-tabs .avatar { width: 1.45rem; height: 1.45rem; font-size: .7rem; }
+    .tab-badge { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 1.1rem; height: 1.1rem; padding: 0 .3rem;
+                 border-radius: 999px; font-size: .65rem; font-style: normal; font-weight: 700; line-height: 1.1rem;
+                 text-align: center; background: var(--tblr-orange); color: #fff; }
+    .tab-badge.overdue { background: var(--tblr-red); }
+    @media (max-width: 991.98px) {
+      /* keep content and toasts clear of the tab bar (and the home indicator) */
+      .page-wrapper { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+      #toasts { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    }
+    @media (max-width: 767.98px) {
+      /* 16px inputs stop iPhones zooming the page when a field is focused */
+      .form-control, .form-control-sm, .form-select { font-size: 16px !important; min-height: 44px; }
+      /* comfortable touch targets (44px) */
+      .btn { min-height: 44px; }
+      .btn-icon, .task-actions .btn, .rename-btn, .sidebar-add {
+        width: 44px; height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+      .card-header-pills .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
+      .navbar-toggler { min-width: 44px; min-height: 44px; }
+      .form-check-input.task-check { width: 1.6rem; height: 1.6rem; }
+      .dropdown-item { padding: .75rem 1rem; }
+      /* quick-add: just the title and a button; description and date sit behind the details toggle */
+      #add-task-form .add-extra { display: none; }
+      #add-task-form.show-details .add-extra { display: block; }
+    }
   </style>
 {{end}}
 
@@ -68,12 +111,13 @@
     <div class="col-auto">
       <form method="post" action="/tasks/{{.ID}}/toggle" data-inplace>
         <input type="hidden" name="next" value="{{$.Path}}">
-        <input type="checkbox" class="form-check-input task-check" {{if .Done}}checked{{end}} aria-label="{{if .Done}}Mark as not done{{else}}Mark as done{{end}}">
+        <label class="task-check-wrap"><input type="checkbox" class="form-check-input task-check" {{if .Done}}checked{{end}} aria-label="{{if .Done}}Mark as not done{{else}}Mark as done{{end}}"></label>
       </form>
     </div>
     <div class="col">
       <div class="task-title fw-medium">{{.Title}}</div>
       {{if .Description}}<div class="task-desc text-secondary small">{{.Description}}</div>{{end}}
+      {{if .DueDate}}<div class="d-sm-none mt-1"><span class="badge {{dueClass .DueDate $.Today .Done}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today}}</span></div>{{end}}
       {{if $.ShowList}}<a class="small text-secondary text-decoration-none" href="/lists/{{.ListID}}"><i class="ti ti-list-check me-1"></i>{{.ListName}}</a>{{end}}
       {{if $.ShowWho}}
         {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
@@ -81,7 +125,7 @@
       {{end}}
     </div>
     {{if .DueDate}}
-    <div class="col-auto">
+    <div class="col-auto d-none d-sm-block">
       <span class="badge {{dueClass .DueDate $.Today .Done}}" title="Due {{.DueDate}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today}}</span>
     </div>
     {{end}}

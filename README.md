@@ -28,6 +28,16 @@ Databases from earlier versions are upgraded automatically on start-up.
   people (or the CLI) appear on your screen within a moment, via server-sent events (`/events`). If you're in
   the middle of editing something, that part waits until you're done so nothing you're typing is overwritten.
 
+## On your phone
+
+The layout adapts to the screen: on phones and tablets the sidebar becomes a hamburger menu and a **bottom tab bar**
+(Overview, Today with its badge, and your profile) appears; quick-add is a single line with a details button for the
+description and due date; touch targets are at least 44px; inputs are 16px so iPhones don't zoom in when you tap them.
+
+It is also **installable**: in Chrome/Edge choose *Install*, on iOS Safari *Share → Add to Home Screen*. You get an icon and a
+window without browser chrome. There is no service worker, so it needs a connection to your server (it is not usable
+offline). Installing from a non-`localhost` address needs HTTPS.
+
 ## Sharing lists with other people
 
 There are no passwords. The first time someone opens the app they pick a **display name**; the server

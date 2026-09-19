@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{{if eq .View "today"}}Today · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
   {{template "assets"}}
 </head>
@@ -108,7 +108,7 @@
           <div class="col-auto ms-auto d-flex align-items-center gap-2">
             {{with .Current}}
               {{if not .Public}}
-              <a href="#share-modal" class="d-flex text-decoration-none me-1" data-bs-toggle="modal" title="Who's on this list">
+              <a href="#share-modal" class="d-none d-md-flex text-decoration-none me-1" data-bs-toggle="modal" title="Who's on this list">
                 <span class="avatar-list avatar-list-stacked">
                   {{range $.Members}}<span class="avatar avatar-sm rounded-circle bg-{{color .ID}}-lt" title="{{.Name}}">{{initial .Name}}</span>{{end}}
                 </span>
@@ -116,9 +116,14 @@
               <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#share-modal"><i class="ti ti-user-plus me-1"></i>Share</button>
               {{end}}
               {{if $.IsOwner}}
-              <form method="post" action="/lists/{{.ID}}/delete" onsubmit="return confirm('Delete this list and all its tasks for everyone?')">
-                <button class="btn btn-outline-danger" type="submit"><i class="ti ti-trash me-1"></i>Delete list</button>
-              </form>
+              <div class="dropdown">
+                <button type="button" class="btn btn-icon" data-bs-toggle="dropdown" aria-expanded="false" title="More" aria-label="More actions"><i class="ti ti-dots"></i></button>
+                <div class="dropdown-menu dropdown-menu-end">
+                  <form method="post" action="/lists/{{.ID}}/delete" onsubmit="return confirm('Delete this list and all its tasks for everyone?')">
+                    <button class="dropdown-item text-danger" type="submit"><i class="ti ti-trash me-2"></i>Delete list</button>
+                  </form>
+                </div>
+              </div>
               {{end}}
             {{end}}
             <button class="btn btn-icon" type="button" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
@@ -198,26 +203,30 @@
         <!-- Add task (not live-updated, so refreshes never disturb what you're typing) -->
         <div class="card mb-3">
           <div class="card-body">
-            <form method="post" action="/lists/{{.ID}}/tasks" data-inplace data-reset>
+            <form method="post" action="/lists/{{.ID}}/tasks" id="add-task-form" data-inplace data-reset>
               <input type="hidden" name="next" value="{{$.Path}}">
+              <!-- On phones this is one line (title, details toggle, add); description and date appear under the toggle -->
               <div class="row g-2">
-                <div class="col-md-4">
+                <div class="col col-md-4 order-1">
                   <div class="input-icon">
                     <span class="input-icon-addon"><i class="ti ti-pencil"></i></span>
-                    <input type="text" name="title" class="form-control" placeholder="What needs doing?" required autofocus maxlength="200">
+                    <input type="text" name="title" class="form-control" placeholder="What needs doing?" required maxlength="200" autocomplete="off">
                   </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-auto d-md-none order-2">
+                  <button type="button" class="btn btn-icon" id="add-details-toggle" aria-expanded="false" aria-controls="add-task-form" title="Description and due date" aria-label="Description and due date"><i class="ti ti-adjustments-horizontal"></i></button>
+                </div>
+                <div class="col-auto col-md-2 order-3 order-md-4 d-grid">
+                  <button class="btn btn-primary" type="submit" aria-label="Add task"><i class="ti ti-plus me-md-1"></i><span class="d-none d-md-inline">Add task</span></button>
+                </div>
+                <div class="col-12 col-md-4 order-4 order-md-2 add-extra">
                   <div class="input-icon">
                     <span class="input-icon-addon"><i class="ti ti-align-left"></i></span>
-                    <input type="text" name="description" class="form-control" placeholder="Description (optional)" maxlength="500">
+                    <input type="text" name="description" class="form-control" placeholder="Description (optional)" maxlength="500" autocomplete="off">
                   </div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-12 col-md-2 order-5 order-md-3 add-extra">
                   <input type="date" name="due" class="form-control" aria-label="Due date" title="Due date (optional)">
-                </div>
-                <div class="col-md-2 d-grid">
-                  <button class="btn btn-primary" type="submit"><i class="ti ti-plus me-1"></i>Add task</button>
                 </div>
               </div>
             </form>
@@ -394,6 +403,16 @@
   </div>
 </div>
 
+<!-- Bottom tab bar for phones and tablets (the sidebar is a hamburger menu there) -->
+<nav class="mobile-tabs d-lg-none" aria-label="Main">
+  <a href="/"{{if eq .View "dashboard"}} class="active" aria-current="page"{{end}}><i class="ti ti-layout-dashboard"></i><span>Overview</span></a>
+  <a href="/today"{{if eq .View "today"}} class="active" aria-current="page"{{end}}>
+    <i class="ti ti-calendar-event"></i><span>Today</span>
+    <span data-live="tab-today-badge">{{if .TodayCount}}<em class="tab-badge{{if .TodayOverdue}} overdue{{end}}">{{.TodayCount}}</em>{{end}}</span>
+  </a>
+  <a href="#profile-modal" data-bs-toggle="modal"><span class="avatar avatar-xs rounded-circle bg-{{color .User.ID}}-lt">{{initial .User.Name}}</span><span>You</span></a>
+</nav>
+
 <div id="toasts" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0/dist/js/tabler.min.js"></script>
@@ -509,8 +528,11 @@
       if (scope) scope.classList.remove('is-editing');
       if (form.hasAttribute('data-reset')) {
         form.reset();
+        form.classList.remove('show-details');
+        var toggleBtn = form.querySelector('#add-details-toggle');
+        if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
         var first = form.querySelector('input[type=text]');
-        if (first) first.focus();
+        if (first) first.focus(); // keep the keyboard up for adding several tasks in a row
       }
       pending = false;
       apply(html);
@@ -539,6 +561,14 @@
       } else {
         flushPending();
       }
+      return;
+    }
+    var details = e.target.closest('#add-details-toggle');
+    if (details) {
+      var addForm2 = document.getElementById('add-task-form');
+      var open = addForm2.classList.toggle('show-details');
+      details.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) addForm2.querySelector('input[name=description]').focus();
       return;
     }
     var eye = e.target.closest('#toggle-token');
@@ -602,6 +632,12 @@
     tokenInput.value = ''; tokenInput.type = 'password'; tokenLoaded = false;
     document.getElementById('copy-token').innerHTML = '<i class="ti ti-copy me-1"></i>Copy';
   });
+
+  // Focus the quick-add box on desktop only: on a phone that would pop the keyboard up on every page load.
+  if (window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    var titleBox = document.querySelector('#add-task-form input[name=title]');
+    if (titleBox) titleBox.focus();
+  }
 
   // Re-open a dialog when the URL asks for one (#share after sharing actions, #profile from old /me links).
   var wanted = { '#share': '[data-bs-target="#share-modal"]', '#profile': '#profile-open' }[location.hash];

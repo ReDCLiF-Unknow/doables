@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,6 +21,33 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
+
+// manifestJSON makes Doables installable: "Add to Home Screen" (or "Install"
+// in Chrome/Edge) gives it an icon and a window without browser chrome. There
+// is no service worker, so it is not usable offline.
+const manifestJSON = `{
+  "name": "Doables",
+  "short_name": "Doables",
+  "description": "Shareable to-do lists you can finish together",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#151f2c",
+  "theme_color": "#1d273b",
+  "icons": [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}`
+
+func serveManifest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	io.WriteString(w, manifestJSON)
+}
 
 const cookieName = "doables_token"
 
@@ -131,6 +160,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) routes() {
+	// App icons and the install manifest (public: browsers fetch them without cookies)
+	static, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	files := http.StripPrefix("/static/", http.FileServerFS(static))
+	s.mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		files.ServeHTTP(w, r)
+	})
+	s.mux.HandleFunc("GET /manifest.webmanifest", serveManifest)
+
 	// Sign-in and sharing
 	s.mux.HandleFunc("GET /welcome", s.welcomeGet)
 	s.mux.HandleFunc("POST /welcome", s.welcomePost)

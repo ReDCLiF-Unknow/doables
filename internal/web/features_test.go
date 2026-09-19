@@ -368,6 +368,62 @@ func TestProfileDialogBackend(t *testing.T) {
 	}
 }
 
+func TestAppIsInstallable(t *testing.T) {
+	e := newEnv(t)
+	get := func(path string) (*http.Response, []byte) {
+		resp, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var b strings.Builder
+		readAll(&b, resp)
+		return resp, []byte(b.String())
+	}
+
+	// The manifest and icons are public (browsers fetch them without cookies).
+	resp, body := get("/manifest.webmanifest")
+	want(t, "manifest", resp.StatusCode, 200)
+	if ct := resp.Header.Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("manifest Content-Type = %q", ct)
+	}
+	var tagged struct {
+		Name     string `json:"name"`
+		StartURL string `json:"start_url"`
+		Display  string `json:"display"`
+		Icons    []struct {
+			Src   string `json:"src"`
+			Sizes string `json:"sizes"`
+		} `json:"icons"`
+	}
+	if err := json.Unmarshal(body, &tagged); err != nil {
+		t.Fatalf("manifest is not valid JSON: %v", err)
+	}
+	if tagged.Name != "Doables" || tagged.StartURL != "/" || tagged.Display != "standalone" || len(tagged.Icons) < 2 {
+		t.Errorf("manifest: %+v", tagged)
+	}
+	for _, ic := range tagged.Icons {
+		r, img := get(ic.Src)
+		want(t, "icon "+ic.Src, r.StatusCode, 200)
+		if ct := r.Header.Get("Content-Type"); ct != "image/png" || len(img) < 100 || string(img[1:4]) != "PNG" {
+			t.Errorf("%s: Content-Type %q, %d bytes", ic.Src, ct, len(img))
+		}
+	}
+	r, _ := get("/static/apple-touch-icon.png")
+	want(t, "apple touch icon", r.StatusCode, 200)
+	r, _ = get("/static/nope.png")
+	want(t, "missing static file", r.StatusCode, 404)
+
+	// Pages link to it and can use the full screen on notched phones.
+	alice := e.register("Alice")
+	_, page := e.page(alice, "/")
+	for _, needle := range []string{`rel="manifest"`, `name="theme-color"`, `rel="apple-touch-icon"`, "viewport-fit=cover", `class="mobile-tabs`} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("page is missing %q", needle)
+		}
+	}
+}
+
 func TestEventsRequireSignIn(t *testing.T) {
 	e := newEnv(t)
 	req, _ := http.NewRequest("GET", e.srv.URL+"/events", nil)
