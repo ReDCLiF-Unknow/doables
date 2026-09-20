@@ -82,7 +82,9 @@ func parseDate(s string) (time.Time, bool) {
 	return t, err == nil
 }
 
-func dueLabel(due, today string) string {
+// dueLabel renders a due date relative to today. A finished task is never
+// late, so its past dates are shown plainly rather than as "Overdue".
+func dueLabel(due, today string, done bool) string {
 	d, ok := parseDate(due)
 	now, ok2 := parseDate(today)
 	if !ok || !ok2 {
@@ -93,9 +95,9 @@ func dueLabel(due, today string) string {
 		return "Today"
 	case days == 1:
 		return "Tomorrow"
-	case days == -1:
+	case days == -1 && !done:
 		return "Yesterday"
-	case days < 0:
+	case days < 0 && !done:
 		return "Overdue · " + d.Format("Jan 2")
 	case d.Year() != now.Year():
 		return d.Format("Jan 2, 2006")

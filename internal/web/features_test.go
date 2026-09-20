@@ -368,6 +368,38 @@ func TestProfileDialogBackend(t *testing.T) {
 	}
 }
 
+func TestDueLabels(t *testing.T) {
+	const today = "2026-09-20"
+	for _, c := range []struct {
+		due, want string
+		done      bool
+	}{
+		{due: "2026-09-20", want: "Today"},
+		{due: "2026-09-21", want: "Tomorrow"},
+		{due: "2026-09-19", want: "Yesterday"},
+		{due: "2026-09-17", want: "Overdue · Sep 17"},
+		{due: "2026-09-27", want: "Sep 27"},
+		{due: "2027-01-04", want: "Jan 4, 2027"},
+		// A finished task is never late, so it keeps a plain date.
+		{due: "2026-09-17", done: true, want: "Sep 17"},
+		{due: "2026-09-19", done: true, want: "Sep 19"},
+		{due: "2026-09-20", done: true, want: "Today"},
+		{due: "not-a-date", want: "not-a-date"},
+	} {
+		if got := dueLabel(c.due, today, c.done); got != c.want {
+			t.Errorf("dueLabel(%q, done=%v) = %q, want %q", c.due, c.done, got, c.want)
+		}
+	}
+
+	// An overdue task's badge is red, a finished one's is muted.
+	if got := dueClass("2026-09-17", today, false); !strings.Contains(got, "red") {
+		t.Errorf("overdue badge = %q, want red", got)
+	}
+	if got := dueClass("2026-09-17", today, true); !strings.Contains(got, "secondary") {
+		t.Errorf("finished badge = %q, want muted", got)
+	}
+}
+
 func TestAppIsInstallable(t *testing.T) {
 	e := newEnv(t)
 	get := func(path string) (*http.Response, []byte) {

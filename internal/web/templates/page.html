@@ -80,7 +80,8 @@
     <div class="page-header d-print-none">
       <div class="container-xl">
         <div class="row g-2 align-items-center" data-live="header">
-          <div class="col">
+          <!-- On phones the title gets its own row, so long list names aren't squeezed by the buttons -->
+          <div class="col-12 col-sm">
             {{if eq .View "today"}}
               <div class="page-pretitle">Across all your lists</div>
               <h2 class="page-title">Today</h2>
@@ -105,7 +106,7 @@
               <h2 class="page-title">Your task lists</h2>
             {{end}}
           </div>
-          <div class="col-auto ms-auto d-flex align-items-center gap-2">
+          <div class="col-12 col-sm-auto ms-sm-auto d-flex align-items-center gap-2">
             {{with .Current}}
               {{if not .Public}}
               <a href="#share-modal" class="d-none d-md-flex text-decoration-none me-1" data-bs-toggle="modal" title="Who's on this list">

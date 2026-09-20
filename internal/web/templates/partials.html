@@ -117,7 +117,7 @@
     <div class="col">
       <div class="task-title fw-medium">{{.Title}}</div>
       {{if .Description}}<div class="task-desc text-secondary small">{{.Description}}</div>{{end}}
-      {{if .DueDate}}<div class="d-sm-none mt-1"><span class="badge {{dueClass .DueDate $.Today .Done}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today}}</span></div>{{end}}
+      {{if .DueDate}}<div class="d-sm-none mt-1"><span class="badge {{dueClass .DueDate $.Today .Done}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today .Done}}</span></div>{{end}}
       {{if $.ShowList}}<a class="small text-secondary text-decoration-none" href="/lists/{{.ListID}}"><i class="ti ti-list-check me-1"></i>{{.ListName}}</a>{{end}}
       {{if $.ShowWho}}
         {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
@@ -126,7 +126,7 @@
     </div>
     {{if .DueDate}}
     <div class="col-auto d-none d-sm-block">
-      <span class="badge {{dueClass .DueDate $.Today .Done}}" title="Due {{.DueDate}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today}}</span>
+      <span class="badge {{dueClass .DueDate $.Today .Done}}" title="Due {{.DueDate}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today .Done}}</span>
     </div>
     {{end}}
     <div class="col-auto task-actions d-flex gap-1">
