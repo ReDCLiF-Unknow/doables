@@ -136,14 +136,25 @@ gh api repos/ReDCLiF-Unknow/doables/releases --jq '.[].assets[] | "\(.download_c
 ```
 
 **Clones and views** — people fetching the source or looking at the repo page. GitHub shows these
-under *Insights → Traffic*, but only for the last 14 days and only to the repo owner. The weekly
-[traffic workflow](.github/workflows/traffic.yml) appends them to [stats/traffic.csv](stats/traffic.csv)
-so the history is not lost. To check right now:
+under *Insights → Traffic*, but only for the last 14 days and only to the repo owner. To check right now:
 
 ```
 gh api repos/ReDCLiF-Unknow/doables/traffic/clones --jq '"\(.count) clones, \(.uniques) unique"'
 gh api repos/ReDCLiF-Unknow/doables/traffic/views  --jq '"\(.count) views, \(.uniques) unique"'
 ```
+
+The weekly [traffic workflow](.github/workflows/traffic.yml) appends them to
+[stats/traffic.csv](stats/traffic.csv) so that history is not lost. It needs a token of its own:
+the traffic API requires push access, and the token Actions provides cannot be granted it. Once, to
+enable it:
+
+1. Create a token at <https://github.com/settings/tokens> — classic with `repo` scope, or
+   fine-grained limited to this repository with *Administration: read-only*.
+2. Add it to the repo: `gh secret set TRAFFIC_TOKEN --repo ReDCLiF-Unknow/doables`
+   (it will prompt for the value, so the token stays out of your shell history).
+3. Check it works: `gh workflow run traffic.yml --repo ReDCLiF-Unknow/doables`
+
+Without that secret the workflow skips quietly instead of failing every week.
 
 Two caveats, so the numbers aren't read as more than they are. Bots clone public repositories
 constantly, especially in the hours after one first appears, so early clone counts are mostly

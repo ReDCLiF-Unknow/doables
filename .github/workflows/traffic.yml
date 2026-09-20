@@ -16,13 +16,25 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     steps:
+      # The traffic API needs push access, and the built-in GITHUB_TOKEN cannot
+      # be granted it (there is no "administration" permission for it), so this
+      # needs a personal access token. Until one exists the job skips quietly
+      # rather than failing every week. See "Who is downloading it" in the README.
+      - name: Check for a token
+        id: check
+        run: |
+          if [ -z "${{ secrets.TRAFFIC_TOKEN }}" ]; then
+            echo "::notice::No TRAFFIC_TOKEN secret, so traffic was not recorded. See the README to set one up."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.skip != 'true'
 
       - name: Record traffic
+        if: steps.check.outputs.skip != 'true'
         env:
-          # The built-in token normally suffices. If it ever stops working, add a
-          # personal access token with "repo" scope as a secret named TRAFFIC_TOKEN.
-          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
         run: |
           set -euo pipefail
           tmp="$RUNNER_TEMP"
@@ -37,7 +49,7 @@ jobs:
                  --jq ".$kind[]? | [.timestamp[0:10], .count, .uniques] | @csv" \
                  2> "$tmp/err" | tr -d '"' > "$tmp/$kind.csv"; then
               cat "$tmp/err"
-              echo "::error::Could not read $kind. Traffic needs push access: add a personal access token with 'repo' scope as a secret named TRAFFIC_TOKEN."
+              echo "::error::Could not read $kind. TRAFFIC_TOKEN needs 'repo' scope (classic) or 'Administration: read-only' (fine-grained)."
               exit 1
             fi
           done
@@ -66,6 +78,7 @@ jobs:
           cat "$GITHUB_STEP_SUMMARY"
 
       - name: Commit if changed
+        if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
