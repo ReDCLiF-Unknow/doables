@@ -1,0 +1,79 @@
+name: Traffic stats
+
+# GitHub keeps clone and view counts for only 14 days. This job saves them to
+# stats/traffic.csv so the history survives. The API returns a day-by-day
+# breakdown of those 14 days, so a weekly run still records every single day
+# and can miss a run without leaving a gap.
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays, 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # to commit the updated CSV
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record traffic
+        env:
+          # The built-in token normally suffices. If it ever stops working, add a
+          # personal access token with "repo" scope as a secret named TRAFFIC_TOKEN.
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          tmp="$RUNNER_TEMP"
+          file=stats/traffic.csv
+          header="date,clones,unique_clones,views,unique_views"
+          mkdir -p stats
+          [ -f "$file" ] || echo "$header" > "$file"
+
+          # gh has jq built in, so nothing extra is needed on the runner.
+          for kind in clones views; do
+            if ! gh api "repos/$GITHUB_REPOSITORY/traffic/$kind" \
+                 --jq ".$kind[]? | [.timestamp[0:10], .count, .uniques] | @csv" \
+                 2> "$tmp/err" | tr -d '"' > "$tmp/$kind.csv"; then
+              cat "$tmp/err"
+              echo "::error::Could not read $kind. Traffic needs push access: add a personal access token with 'repo' scope as a secret named TRAFFIC_TOKEN."
+              exit 1
+            fi
+          done
+
+          # One row per day, from whichever feed mentions that day.
+          awk -F, '
+            NR == FNR { c[$1] = $2; cu[$1] = $3; seen[$1]; next }
+            { v[$1] = $2; vu[$1] = $3; seen[$1] }
+            END { for (d in seen) printf "%s,%d,%d,%d,%d\n", d, c[d], cu[d], v[d], vu[d] }
+          ' "$tmp/clones.csv" "$tmp/views.csv" > "$tmp/fresh.csv"
+
+          # Fresh data wins for the days it covers; older rows are kept as they are.
+          tail -n +2 "$file" > "$tmp/old.csv"
+          awk -F, 'NR == FNR { seen[$1]; next } !($1 in seen)' "$tmp/fresh.csv" "$tmp/old.csv" > "$tmp/keep.csv"
+          { echo "$header"; cat "$tmp/keep.csv" "$tmp/fresh.csv" | sort -t, -k1,1; } > "$file"
+
+          # "unique" is per day, so these totals count someone who came back on
+          # two days twice. They are a floor on interest, not a headcount.
+          tail -n +2 "$file" | awk -F, -v out="$GITHUB_STEP_SUMMARY" '
+            { c += $2; cu += $3; v += $4; vu += $5; days++ }
+            END {
+              printf "### Doables traffic\n\n| | total | unique per day, summed |\n|---|---:|---:|\n" > out
+              printf "| clones | %d | %d |\n| views | %d | %d |\n\n", c, cu, v, vu >> out
+              printf "Recorded over %d days. Release downloads are counted separately, on the releases page.\n", days >> out
+            }'
+          cat "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats/traffic.csv
+          if git diff --staged --quiet; then
+            echo "nothing new"
+          else
+            git commit -m "Update traffic stats"
+            git push
+          fi

@@ -1,9 +1,20 @@
 # Doables
 
+[![Release](https://img.shields.io/github/v/release/ReDCLiF-Unknow/doables)](https://github.com/ReDCLiF-Unknow/doables/releases)
+[![Downloads](https://img.shields.io/github/downloads/ReDCLiF-Unknow/doables/total)](https://github.com/ReDCLiF-Unknow/doables/releases)
+[![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A small to-do list app you can share: Go, SQLite, `html/template`, and the [Tabler](https://tabler.io) UI + Tabler Icons (loaded from a CDN).
 Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
 
-## Run the server
+## Install
+
+Download the archive for your system from the
+[latest release](https://github.com/ReDCLiF-Unknow/doables/releases/latest), unpack it, and run
+`doables-server`. Then open <http://localhost:8080>. There is nothing else to install: the database
+is a single SQLite file created on first run.
+
+## Run from source
 
 ```
 go run ./cmd/server            # http://localhost:8080, database in ./doables.db
@@ -112,6 +123,34 @@ Dates are `YYYY-MM-DD`.
 ```
 go test ./...
 ```
+
+## Who is downloading it
+
+Two different numbers, measuring two different things:
+
+**Release downloads** — how many times a built archive was fetched. GitHub counts these permanently
+and publicly; the badge at the top is that total. To see the breakdown per file:
+
+```
+gh api repos/ReDCLiF-Unknow/doables/releases --jq '.[].assets[] | "\(.download_count)\t\(.name)"'
+```
+
+**Clones and views** — people fetching the source or looking at the repo page. GitHub shows these
+under *Insights → Traffic*, but only for the last 14 days and only to the repo owner. The weekly
+[traffic workflow](.github/workflows/traffic.yml) appends them to [stats/traffic.csv](stats/traffic.csv)
+so the history is not lost. To check right now:
+
+```
+gh api repos/ReDCLiF-Unknow/doables/traffic/clones --jq '"\(.count) clones, \(.uniques) unique"'
+gh api repos/ReDCLiF-Unknow/doables/traffic/views  --jq '"\(.count) views, \(.uniques) unique"'
+```
+
+Two caveats, so the numbers aren't read as more than they are. Bots clone public repositories
+constantly, especially in the hours after one first appears, so early clone counts are mostly
+automated rather than people. And `unique` is counted per day, so the same person returning on two
+days is counted twice; summed totals are a floor on interest, not a headcount.
+
+Nothing is tracked inside the app itself. A server you run never reports anything to anyone.
 
 ## Licence
 

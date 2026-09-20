@@ -1,0 +1,87 @@
+name: Release
+
+# Publishes binaries when you push a version tag, e.g.
+#   git tag v1.0.0 && git push origin v1.0.0
+# GitHub then counts every download of every file, permanently, and the
+# "downloads" badge in the README reads that total.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish"
+        required: true
+
+permissions:
+  contents: write # to create the release and upload the binaries
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      # SQLite here is pure Go (modernc.org/sqlite), so every platform
+      # cross-compiles from this one runner with CGO switched off.
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            export GOOS=${target%/*} GOARCH=${target#*/}
+            name="doables_${VERSION}_${GOOS}_${GOARCH}"
+            stage="build/$name"
+            mkdir -p "$stage"
+            ext=""
+            [ "$GOOS" = windows ] && ext=".exe"
+            echo "building $name"
+            go build -trimpath -ldflags="-s -w" -o "$stage/doables-server$ext" ./cmd/server
+            go build -trimpath -ldflags="-s -w" -o "$stage/doables$ext" ./cmd/doables
+            cp README.md LICENSE "$stage/"
+            if [ "$GOOS" = windows ]; then
+              (cd build && zip -qr "../dist/$name.zip" "$name")
+            else
+              tar -czf "dist/$name.tar.gz" -C build "$name"
+            fi
+          done
+          (cd dist && sha256sum ./* > checksums.txt)
+          ls -lh dist
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ inputs.tag || github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          cat > notes.md <<NOTES
+          Download the archive for your system below and unpack it, then run \`doables-server\`
+          and open <http://localhost:8080>. \`doables\` is the command-line client.
+
+          Nothing else is needed: the database is a single SQLite file created on first run,
+          and there is no runtime dependency to install.
+
+          \`checksums.txt\` holds the SHA-256 of each archive.
+
+          Commits: <https://github.com/$REPO/commits/$VERSION>
+          NOTES
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release create "$VERSION" dist/* \
+            --title "Doables $VERSION" \
+            --notes-file notes.md
