@@ -112,3 +112,11 @@ Dates are `YYYY-MM-DD`.
 ```
 go test ./...
 ```
+
+## Licence
+
+[MIT](LICENSE) — use it, change it, share it, sell it; just keep the copyright notice.
+
+It stands on other people's open source work: [Tabler](https://tabler.io) and
+[Resty](https://github.com/go-resty/resty) (MIT), [Cobra](https://github.com/spf13/cobra) (Apache 2.0),
+and [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3-Clause).
