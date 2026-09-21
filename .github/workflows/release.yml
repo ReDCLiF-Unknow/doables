@@ -135,6 +135,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.tag || github.ref_name }}
         run: |
-          gh release create "$VERSION" dist/* \
-            --title "Doables $VERSION" \
-            --notes-file notes.md
+          set -euo pipefail
+          # Re-running this workflow on a tag that has already been published
+          # (the workflow_dispatch input above) should update the release
+          # rather than fall over on a name that is taken.
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "$VERSION is already published; updating it"
+            gh release upload "$VERSION" dist/* --clobber
+            gh release edit "$VERSION" --title "Doables $VERSION" --notes-file notes.md
+          else
+            gh release create "$VERSION" dist/* --title "Doables $VERSION" --notes-file notes.md
+          fi
