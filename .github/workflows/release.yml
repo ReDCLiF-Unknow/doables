@@ -17,8 +17,34 @@ permissions:
   contents: write # to create the release and upload the binaries
 
 jobs:
+  # The same image CI publishes from main, tagged with this version number too.
+  # This runs first: the release notes tell people to `docker run` this tag, so
+  # the image has to exist before those instructions are published.
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        env:
+          VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables"
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t "$image:$VERSION" -t "$image:latest" --push .
+
   release:
     runs-on: ubuntu-latest
+    needs: docker
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,18 +90,45 @@ jobs:
         env:
           VERSION: ${{ inputs.tag || github.ref_name }}
           REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
         run: |
+          set -euo pipefail
+          image="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/doables"
           cat > notes.md <<NOTES
-          Download the archive for your system below and unpack it, then run \`doables-server\`
-          and open <http://localhost:8080>. \`doables\` is the command-line client.
+          Two ways to run it. Either way, open <http://localhost:8080> and pick a display name.
 
-          Nothing else is needed: the database is a single SQLite file created on first run,
-          and there is no runtime dependency to install.
+          ### Docker
 
-          \`checksums.txt\` holds the SHA-256 of each archive.
+          \`\`\`
+          docker run -d --name doables -p 8080:8080 -v doables:/data $image:$VERSION
+          \`\`\`
+
+          The image carries the server and the CLI and nothing else, runs as a non-root user, and
+          keeps the database in the \`/data\` volume so it survives upgrades. It is built for
+          \`linux/amd64\` and \`linux/arm64\`, so a Raspberry Pi works. \`$image:latest\` follows
+          the newest release.
+
+          With [compose.yaml](https://github.com/$REPO/blob/$VERSION/compose.yaml) instead:
+
+          \`\`\`
+          docker compose up -d
+          \`\`\`
+
+          ### A prebuilt binary
+
+          Download the archive for your system below and unpack it, then run \`doables-server\`.
+          \`doables\` beside it is the command-line client.
+
+          Nothing else is needed: the database is a single SQLite file created on first run, and
+          there is no runtime dependency to install. Databases from earlier versions are upgraded
+          on start-up. \`checksums.txt\` holds the SHA-256 of each archive.
+
+          ---
 
           Commits: <https://github.com/$REPO/commits/$VERSION>
           NOTES
+          echo "--- notes.md ---"
+          cat notes.md
 
       - name: Publish
         env:
@@ -85,26 +138,3 @@ jobs:
           gh release create "$VERSION" dist/* \
             --title "Doables $VERSION" \
             --notes-file notes.md
-
-  # The same image CI publishes from main, tagged with this version number too.
-  docker:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        env:
-          VERSION: ${{ inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
-          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables"
-          docker buildx build --platform linux/amd64,linux/arm64 \
-            -t "$image:$VERSION" -t "$image:latest" --push .
