@@ -175,6 +175,17 @@ go test ./...
 Every push and pull request runs the same tests on GitHub, along with `gofmt`, `go vet`,
 a cross-compile of each released platform, and a build of the Docker image.
 
+The screenshots above are generated rather than taken by hand, so they can be redone
+whenever the UI changes:
+
+```
+python tools/screenshots/shoot.py
+```
+
+It starts a server on a spare port, fills it with a shared list, photographs it with
+headless Chrome and writes the PNGs into `docs/`, cleaning up after itself. It needs Go,
+Chrome and `python -m pip install websockets`.
+
 ## Who is downloading it
 
 Two different numbers, measuring two different things:
