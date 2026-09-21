@@ -10,17 +10,23 @@ Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/list-dark.png">
-  <img alt="A shared list in Doables: tasks with due dates, who added each one and who finished it" src="docs/list-light.png">
+  <img alt="A shared list in Doables: tasks with due dates, whose job each one is, who added it and who finished it" src="docs/list-light.png">
 </picture>
 
 <table>
 <tr>
 <td width="62%"><img alt="The Today view, gathering everything due across every list" src="docs/today-dark.png"></td>
-<td width="38%"><img alt="Doables on a narrow screen, with a bottom tab bar" src="docs/mobile-dark.png"></td>
+<td width="38%"><img alt="Doables on a phone, with a bottom tab bar" src="docs/mobile-dark.png"></td>
 </tr>
 <tr>
 <td><em>Today, across all your lists</em></td>
-<td><em>On a narrow screen</em></td>
+<td><em>On a phone</em></td>
+</tr>
+<tr>
+<td colspan="2"><img alt="My tasks: the open tasks assigned to you, from every list" src="docs/mine-dark.png"></td>
+</tr>
+<tr>
+<td colspan="2"><em>My tasks: what other people have made your job</em></td>
 </tr>
 </table>
 

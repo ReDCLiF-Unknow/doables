@@ -39,7 +39,10 @@
     .list-card:hover { transform: translateY(-2px); box-shadow: var(--tblr-box-shadow-card); }
     :root[data-bs-theme="dark"] .icon-to-dark, :root:not([data-bs-theme="dark"]) .icon-to-light { display: none; }
     .stat-icon { width: 2.5rem; height: 2.5rem; }
-    /* Tabler's negative margin on the last avatar would overlap the Share button */
+    /* Tabler's negative margin on the last avatar would overlap the Share button,
+       and with three or more people it hides so much of each that the initials
+       are unreadable; overlap them a little instead. */
+    .avatar-list-stacked .avatar { margin-right: -.35rem !important; }
     .avatar-list-stacked .avatar:last-child { margin-right: 0 !important; }
     .avatar-list-stacked .avatar { box-shadow: 0 0 0 2px var(--tblr-bg-surface); }
     /* Tabler lets a vertical navbar's nav grow to fill the sidebar; with several
