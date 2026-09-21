@@ -105,16 +105,20 @@ func main() {
 			if err := check(client.R().SetResult(&ts).Get("/api/lists/" + id + "/tasks")); err != nil {
 				return err
 			}
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tDONE\tTITLE\tDUE\tDESCRIPTION")
-			for _, t := range ts {
-				mark := "[ ]"
-				if t.Done {
-					mark = "[x]"
-				}
-				fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", t.ID, mark, t.Title, t.DueDate, t.Description)
+			return printTasks(cmd, ts, false)
+		}}
+
+	mine := &cobra.Command{Use: "mine", Short: "Show the open tasks assigned to you", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var ts []store.Task
+			if err := check(client.R().SetResult(&ts).Get("/api/mine")); err != nil {
+				return err
 			}
-			return w.Flush()
+			if len(ts) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "Nothing is assigned to you.")
+				return nil
+			}
+			return printTasks(cmd, ts, true)
 		}}
 
 	var desc, due string
@@ -162,6 +166,41 @@ func main() {
 	edit.Flags().String("title", "", "new title")
 	edit.Flags().String("description", "", "new description")
 	edit.Flags().String("due", "", `new due date, YYYY-MM-DD ("" clears it)`)
+
+	// assign takes a member's id (see `doables members`), "me", or "none".
+	assign := &cobra.Command{Use: "assign TASK_ID WHO", Short: `Give a task to someone ("me", a member id, or "none")`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			var who int64
+			switch strings.ToLower(args[1]) {
+			case "none", "nobody", "anyone", "-":
+				who = 0
+			case "me":
+				var u store.User
+				if err := check(client.R().SetResult(&u).Get("/api/me")); err != nil {
+					return err
+				}
+				who = u.ID
+			default:
+				if who, err = strconv.ParseInt(args[1], 10, 64); err != nil || who <= 0 {
+					return fmt.Errorf(`invalid person %q: use "me", "none", or a member id from "doables members LIST_ID"`, args[1])
+				}
+			}
+			var t store.Task
+			if err := check(client.R().SetBody(map[string]int64{"assignee_id": who}).SetResult(&t).Patch("/api/tasks/" + id)); err != nil {
+				return err
+			}
+			if t.Assignee == "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Task %d (%s) is now anyone's\n", t.ID, t.Title)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Task %d (%s) is now %s's\n", t.ID, t.Title, t.Assignee)
+			}
+			return nil
+		}}
 
 	renameList := &cobra.Command{Use: "rename-list LIST_ID NAME", Short: "Rename a list", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -290,7 +329,7 @@ func main() {
 		}}
 
 	root.AddCommand(register, whoami, invite, join, members)
-	root.AddCommand(edit, renameList)
+	root.AddCommand(edit, renameList, assign, mine)
 	root.AddCommand(lists, newList, rmList, tasks, add,
 		setDone("done", "Mark a task as done", true),
 		setDone("undone", "Mark a task as not done", false),
@@ -300,6 +339,29 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// printTasks writes a table of tasks. Inside one list the extra column says
+// who each task is for; across lists it says which list it is in.
+func printTasks(cmd *cobra.Command, ts []store.Task, withList bool) error {
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+	head := "ID\tDONE\tTITLE\tDUE\tFOR\tDESCRIPTION"
+	if withList {
+		head = "ID\tDONE\tTITLE\tDUE\tLIST\tDESCRIPTION"
+	}
+	fmt.Fprintln(w, head)
+	for _, t := range ts {
+		mark := "[ ]"
+		if t.Done {
+			mark = "[x]"
+		}
+		who := t.Assignee
+		if withList {
+			who = t.ListName
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", t.ID, mark, t.Title, t.DueDate, who, t.Description)
+	}
+	return w.Flush()
 }
 
 // findList fetches the lists visible to the caller and returns the one with the given ID.

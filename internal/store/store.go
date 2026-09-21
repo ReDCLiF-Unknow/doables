@@ -75,6 +75,10 @@ type Task struct {
 	DueDate     string    `json:"due_date,omitempty"` // YYYY-MM-DD, empty when there is none
 	AddedBy     string    `json:"added_by,omitempty"`
 	DoneBy      string    `json:"done_by,omitempty"`
+	// AssigneeID is who the task is for, 0 when it is for nobody in
+	// particular. Assignee is that person's name.
+	AssigneeID int64  `json:"assignee_id,omitempty"`
+	Assignee   string `json:"assignee,omitempty"`
 }
 
 // TaskUpdate is a partial edit: nil fields are left alone. A DueDate pointing
@@ -118,6 +122,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 	created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	added_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
 	done_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+	assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
 	due_date    TEXT,
 	deleted_at  TIMESTAMP
 );
@@ -160,6 +165,7 @@ func (s *Store) migrate() error {
 		{"lists", "invite_code", "TEXT"},
 		{"tasks", "added_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"tasks", "done_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
+		{"tasks", "assigned_to", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"tasks", "due_date", "TEXT"},
 		{"tasks", "deleted_at", "TIMESTAMP"},
 	} {
@@ -172,6 +178,12 @@ func (s *Store) migrate() error {
 				return err
 			}
 		}
+	}
+
+	// Indexes on columns added above: they cannot live in the schema, which
+	// runs before those columns exist.
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS tasks_assigned_to ON tasks(assigned_to)`); err != nil {
+		return err
 	}
 
 	// Every list gets an invite code, including ones that predate sharing.
@@ -508,10 +520,15 @@ func (s *Store) AddMember(listID, userID int64) error {
 }
 
 // RemoveMember removes someone from a list. The owner cannot be removed.
+// Anything that was assigned to them goes back to being nobody's job, since
+// they can no longer see it.
 func (s *Store) RemoveMember(listID, userID int64) error {
 	if err := s.affected(s.db.Exec(`
 		DELETE FROM list_members WHERE list_id = ? AND user_id = ?
 		AND user_id != (SELECT COALESCE(owner_id, 0) FROM lists WHERE id = ?)`, listID, userID, listID)); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`UPDATE tasks SET assigned_to = NULL WHERE list_id = ? AND assigned_to = ?`, listID, userID); err != nil {
 		return err
 	}
 	s.changed(listID, userID)
@@ -545,15 +562,18 @@ func (s *Store) Members(listID int64) ([]Member, error) {
 
 const taskSelect = `
 	SELECT t.id, t.list_id, l.name, t.title, t.description, t.done, t.created_at,
-	       COALESCE(t.due_date, ''), COALESCE(a.name, ''), COALESCE(d.name, '')
+	       COALESCE(t.due_date, ''), COALESCE(a.name, ''), COALESCE(d.name, ''),
+	       COALESCE(t.assigned_to, 0), COALESCE(g.name, '')
 	FROM tasks t
 	JOIN lists l ON l.id = t.list_id
 	LEFT JOIN users a ON a.id = t.added_by
-	LEFT JOIN users d ON d.id = t.done_by `
+	LEFT JOIN users d ON d.id = t.done_by
+	LEFT JOIN users g ON g.id = t.assigned_to `
 
 func scanTask(sc interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := sc.Scan(&t.ID, &t.ListID, &t.ListName, &t.Title, &t.Description, &t.Done, &t.CreatedAt, &t.DueDate, &t.AddedBy, &t.DoneBy)
+	err := sc.Scan(&t.ID, &t.ListID, &t.ListName, &t.Title, &t.Description, &t.Done, &t.CreatedAt, &t.DueDate, &t.AddedBy, &t.DoneBy,
+		&t.AssigneeID, &t.Assignee)
 	return t, err
 }
 
@@ -688,6 +708,52 @@ func (s *Store) SetDone(id int64, done bool, userID int64) (Task, error) {
 		s.changed(t.ListID)
 	}
 	return t, err
+}
+
+// AssignTask makes a task somebody's job. Pass assigneeID 0 to leave it for
+// anyone. The assignee must be a member of the task's list: assigning work to
+// someone who cannot see it would only hide it.
+func (s *Store) AssignTask(id, assigneeID int64) (Task, error) {
+	t, err := s.Task(id)
+	if err != nil {
+		return Task{}, err
+	}
+	if assigneeID != 0 && !s.isMember(t.ListID, assigneeID) {
+		return Task{}, ErrInvalid
+	}
+	if _, err := s.db.Exec(`UPDATE tasks SET assigned_to = ? WHERE id = ? AND deleted_at IS NULL`,
+		nullID(assigneeID), id); err != nil {
+		return Task{}, err
+	}
+	// The old assignee is told too: the task has just left their own list.
+	s.changed(t.ListID, t.AssigneeID, assigneeID)
+	return s.Task(id)
+}
+
+// isMember reports whether userID belongs to a list. A public list has no
+// members, so nothing can be assigned in one until somebody claims it.
+func (s *Store) isMember(listID, userID int64) bool {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM list_members WHERE list_id = ? AND user_id = ?`, listID, userID).Scan(&n)
+	return err == nil && n > 0
+}
+
+// AssignedTasks returns the open tasks assigned to userID, across every list
+// they can see, soonest due first and undated last.
+func (s *Store) AssignedTasks(userID int64) ([]Task, error) {
+	return s.queryTasks(`WHERE t.deleted_at IS NULL AND t.done = 0 AND t.assigned_to = ?
+		AND `+visibleLists+`
+		ORDER BY t.due_date IS NULL, t.due_date, l.id, t.id`, userID, userID)
+}
+
+// AssignedCount counts the open tasks assigned to userID.
+func (s *Store) AssignedCount(userID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM tasks t JOIN lists l ON l.id = t.list_id
+		WHERE t.deleted_at IS NULL AND t.done = 0 AND t.assigned_to = ?
+		AND `+visibleLists, userID, userID).Scan(&n)
+	return n, err
 }
 
 // DeleteTask moves a task to the trash. It can be restored for a day.

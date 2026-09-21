@@ -59,6 +59,11 @@ Databases from earlier versions are upgraded automatically on start-up.
 
 - **Edit anything.** Hover a task and click the pencil to change its title, description or due date in place
   (Esc cancels). Click the pencil next to a list's name to rename it.
+- **Whose job it is.** On a shared list, the person icon on a task opens a menu of everyone on it;
+  pick a name and the task says so. Only members can be given work, and removing someone from a list
+  frees whatever was theirs. **My tasks** in the sidebar gathers everything assigned to you across all
+  your lists, with a count beside it; finishing something takes it off that list without forgetting
+  who did it.
 - **Due dates.** Optional on every task. Tasks show a badge ("Today", "Tomorrow", red "Overdue · Sep 17"), and
   open tasks sort soonest-due first.
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
@@ -87,11 +92,13 @@ gives their browser a secret token (in an `HttpOnly` cookie; only a hash is stor
 
 - Every list you create is **private** to you. Click **Share** on a list to get its **invite link**.
 - Anyone who opens the link, picks a name and clicks **Join list** becomes a member: they can add, edit, tick
-  off and delete tasks, and rename the list. Tasks show who added them and who finished them.
+  off and delete tasks, assign them, and rename the list. Tasks show who added them, who they are for, and
+  who finished them.
 - The **owner** can remove members, create a new invite link (which stops the old one working) and delete
   the list. Members can leave.
 - Lists created before sharing existed (or by the CLI without a token) are **public**: anyone who can reach
-  the server sees them. Open one and click **Claim this list** to make it private.
+  the server sees them. Open one and click **Claim this list** to make it private. A public list has no
+  members, so nothing in it can be assigned until somebody claims it.
 - **Profile** (bottom of the sidebar) lets you rename yourself and shows your token. Paste it on another
   device ("Already use Doables on another device?") to sign in as yourself there. Clearing your cookies
   without saving the token means losing that identity.
@@ -113,6 +120,9 @@ doables add 1 "Buy milk" -d "2 litres" --due 2026-10-01
 doables tasks 1
 doables edit 3 --title "Buy oat milk" --due 2026-10-05   # only the flags you give are changed
 doables edit 3 --due ""                                  # clear the due date
+doables assign 3 2    # give task 3 to member 2 (see `doables members`)
+doables assign 3 me   # ...or to yourself; `doables assign 3 none` frees it again
+doables mine          # everything assigned to you, across every list
 doables done 1        # or: doables undone 1
 doables lists
 doables rename-list 1 "Weekly shop"
@@ -139,6 +149,7 @@ Dates are `YYYY-MM-DD`.
 | POST | `/api/users` | `{"name": "..."}` → `{id, name, token}` |
 | GET | `/api/me` | |
 | POST | `/api/join/{code}` | |
+| GET | `/api/mine` | open tasks assigned to you, across every list |
 | GET | `/api/lists` | |
 | POST | `/api/lists` | `{"name": "..."}` |
 | PATCH | `/api/lists/{id}` | `{"name": "..."}` (any member) |
@@ -146,7 +157,7 @@ Dates are `YYYY-MM-DD`.
 | GET | `/api/lists/{id}/members` | |
 | GET | `/api/lists/{id}/tasks` | |
 | POST | `/api/lists/{id}/tasks` | `{"title": "...", "description": "...", "due_date": "..."}` |
-| PATCH | `/api/tasks/{id}` | any of `{"done": true, "title": "...", "description": "...", "due_date": "..."}`; `"due_date": ""` clears it |
+| PATCH | `/api/tasks/{id}` | any of `{"done": true, "title": "...", "description": "...", "due_date": "...", "assignee_id": 2}`; `"due_date": ""` clears the date and `"assignee_id": 0` clears the assignee |
 | DELETE | `/api/tasks/{id}` | moves the task to the trash |
 
 ## Tests

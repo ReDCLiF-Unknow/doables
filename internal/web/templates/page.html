@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{if eq .View "today"}}Today · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
+  <title>{{if eq .View "today"}}Today · {{else if eq .View "mine"}}My tasks · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
   {{template "assets"}}
 </head>
 <body>
@@ -34,6 +34,13 @@
               <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-calendar-event"></i></span>
               <span class="nav-link-title">Today</span>
               <span class="ms-auto" data-live="today-badge">{{if .TodayCount}}<span class="badge {{if .TodayOverdue}}bg-red-lt text-red{{else}}bg-orange-lt text-orange{{end}}">{{.TodayCount}}</span>{{end}}</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link{{if eq .View "mine"}} active{{end}}" href="/mine">
+              <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-user-pin"></i></span>
+              <span class="nav-link-title">My tasks</span>
+              <span class="ms-auto" data-live="mine-badge">{{if .MineCount}}<span class="badge bg-blue-lt text-blue">{{.MineCount}}</span>{{end}}</span>
             </a>
           </li>
         </ul>
@@ -85,6 +92,9 @@
             {{if eq .View "today"}}
               <div class="page-pretitle">Across all your lists</div>
               <h2 class="page-title">Today</h2>
+            {{else if eq .View "mine"}}
+              <div class="page-pretitle">Across all your lists</div>
+              <h2 class="page-title">My tasks</h2>
             {{else if .Current}}
               <div class="page-pretitle">List</div>
               <div class="page-title-wrap" data-edit-scope>
@@ -159,6 +169,29 @@
             </div>
           </div></div>
           {{end}}
+        </div>
+
+      {{else if eq .View "mine"}}
+        <!-- Mine: open tasks somebody has made my job -->
+        <div data-live="tasks">
+          <div class="card">
+            {{if .Tasks}}
+            <div class="list-group list-group-flush">
+              {{range .Tasks}}{{template "taskrow" (row $ .)}}{{end}}
+            </div>
+            {{else}}
+            <div class="card-body">
+              <div class="empty">
+                <div class="empty-icon"><i class="ti ti-user-pin fs-1"></i></div>
+                <p class="empty-title">Nothing is yours yet</p>
+                <p class="empty-subtitle text-secondary">
+                  Tasks people give you show up here. Open a shared list, click the
+                  <i class="ti ti-user-plus"></i> button on a task and pick a name.
+                </p>
+              </div>
+            </div>
+            {{end}}
+          </div>
         </div>
 
       {{else if .Current}}
@@ -411,6 +444,10 @@
     <i class="ti ti-calendar-event"></i><span>Today</span>
     <span data-live="tab-today-badge">{{if .TodayCount}}<em class="tab-badge{{if .TodayOverdue}} overdue{{end}}">{{.TodayCount}}</em>{{end}}</span>
   </a>
+  <a href="/mine"{{if eq .View "mine"}} class="active" aria-current="page"{{end}}>
+    <i class="ti ti-user-pin"></i><span>Mine</span>
+    <span data-live="tab-mine-badge">{{if .MineCount}}<em class="tab-badge mine">{{.MineCount}}</em>{{end}}</span>
+  </a>
   <a href="#profile-modal" data-bs-toggle="modal"><span class="avatar avatar-xs rounded-circle bg-{{color .User.ID}}-lt">{{initial .User.Name}}</span><span>You</span></a>
 </nav>
 
@@ -454,6 +491,7 @@
   function isEditing(el) {
     var a = document.activeElement;
     if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return true;
+    if (el.querySelector('.dropdown-menu.show')) return true; // a menu is open: don't yank it away
     return !!el.querySelector('.is-editing');
   }
 
@@ -515,11 +553,24 @@
       .catch(function () { toast('Could not restore the task.'); });
   }
 
+  // The button that submits a form can carry a value of its own (the assign
+  // menu posts a person's id that way). Older browsers leave it out of
+  // FormData, so put it back by hand.
+  function fieldsOf(form, submitter) {
+    try {
+      return new FormData(form, submitter);
+    } catch (err) {
+      var fd = new FormData(form);
+      if (submitter && submitter.name) fd.append(submitter.name, submitter.value);
+      return fd;
+    }
+  }
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (!form.matches || !form.matches('[data-inplace]')) return;
     e.preventDefault();
-    var params = new URLSearchParams(new FormData(form));
+    var params = new URLSearchParams(fieldsOf(form, e.submitter));
     var undoID = null;
     if (form.hasAttribute('data-undo')) undoID = new URL(form.action).pathname.split('/')[2];
     post(form.action, params).then(function (html) {

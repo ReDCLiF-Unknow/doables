@@ -81,6 +81,7 @@
                  border-radius: 999px; font-size: .65rem; font-style: normal; font-weight: 700; line-height: 1.1rem;
                  text-align: center; background: var(--tblr-orange); color: #fff; }
     .tab-badge.overdue { background: var(--tblr-red); }
+    .tab-badge.mine { background: var(--tblr-blue); }
     @media (max-width: 991.98px) {
       /* keep content and toasts clear of the tab bar (and the home indicator) */
       .page-wrapper { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
@@ -119,6 +120,7 @@
       {{if .Description}}<div class="task-desc text-secondary small">{{.Description}}</div>{{end}}
       {{if .DueDate}}<div class="d-sm-none mt-1"><span class="badge {{dueClass .DueDate $.Today .Done}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today .Done}}</span></div>{{end}}
       {{if $.ShowList}}<a class="small text-secondary text-decoration-none" href="/lists/{{.ListID}}"><i class="ti ti-list-check me-1"></i>{{.ListName}}</a>{{end}}
+      {{if .AssigneeID}}<div class="small{{if eq .AssigneeID $.Me}} text-blue fw-medium{{else}} text-secondary{{end}}"><i class="ti ti-user-pin me-1"></i>{{if eq .AssigneeID $.Me}}Yours{{else}}{{.Assignee}}'s job{{end}}</div>{{end}}
       {{if $.ShowWho}}
         {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
         {{else if .AddedBy}}<div class="text-secondary small"><i class="ti ti-user me-1"></i>Added by {{.AddedBy}}</div>{{end}}
@@ -130,6 +132,30 @@
     </div>
     {{end}}
     <div class="col-auto task-actions d-flex gap-1">
+      {{if $.Members}}
+      <div class="dropdown">
+        <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-bs-toggle="dropdown" aria-expanded="false"
+                title="{{if .AssigneeID}}For {{.Assignee}}{{else}}Give this to someone{{end}}" aria-label="Assign this task">
+          {{if .AssigneeID}}<span class="avatar avatar-xs rounded-circle bg-{{color .AssigneeID}}-lt">{{initial .Assignee}}</span>
+          {{else}}<i class="ti ti-user-plus"></i>{{end}}
+        </button>
+        <div class="dropdown-menu dropdown-menu-end">
+          <div class="dropdown-header">Whose job is this?</div>
+          <form method="post" action="/tasks/{{.ID}}/assign" data-inplace>
+            <input type="hidden" name="next" value="{{$.Path}}">
+            {{range $.Members}}
+            <button class="dropdown-item{{if eq .ID $.Task.AssigneeID}} active{{end}}" type="submit" name="user" value="{{.ID}}">
+              <span class="avatar avatar-xs rounded-circle bg-{{color .ID}}-lt me-2">{{initial .Name}}</span>{{.Name}}{{if eq .ID $.Me}} (you){{end}}
+            </button>
+            {{end}}
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item{{if not $.Task.AssigneeID}} active{{end}}" type="submit" name="user" value="">
+              <i class="ti ti-user-off me-2"></i>Anyone
+            </button>
+          </form>
+        </div>
+      </div>
+      {{end}}
       <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-edit-toggle title="Edit task" aria-label="Edit task"><i class="ti ti-pencil"></i></button>
       <form method="post" action="/tasks/{{.ID}}/delete" data-inplace data-undo>
         <input type="hidden" name="next" value="{{$.Path}}">

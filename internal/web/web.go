@@ -70,8 +70,9 @@ var funcs = template.FuncMap{
 	"dueClass": dueClass,
 	// row bundles a task with the page it is shown on, for the "taskrow" template.
 	"row": func(p pageData, t store.Task) taskRow {
-		return taskRow{Task: t, Today: p.Today, Path: p.Path, ShowList: p.View == "today",
-			ShowWho: p.Current != nil && p.Current.Members > 1}
+		return taskRow{Task: t, Today: p.Today, Path: p.Path, ShowList: p.View != "list",
+			ShowWho: p.Current != nil && p.Current.Members > 1,
+			Me:      p.User.ID, Members: p.Members}
 	},
 }
 
@@ -124,8 +125,13 @@ type taskRow struct {
 	Task     store.Task
 	Today    string
 	Path     string // page to return to after an action
-	ShowList bool   // show which list the task belongs to (Today view)
+	ShowList bool   // show which list the task belongs to (Today and Mine)
 	ShowWho  bool   // show who added / finished it (shared lists)
+	Me       int64  // the viewer, so their own name can read "you"
+	// Members of the list being viewed. The assign menu needs them, so it
+	// only appears on a list's own page; elsewhere a task's list is not
+	// necessarily the one whose members were loaded.
+	Members []store.Member
 }
 
 type Server struct {
@@ -187,6 +193,7 @@ func (s *Server) routes() {
 	// HTML UI
 	s.mux.HandleFunc("GET /{$}", s.authed(s.pageIndex))
 	s.mux.HandleFunc("GET /today", s.authed(s.pageToday))
+	s.mux.HandleFunc("GET /mine", s.authed(s.pageMine))
 	s.mux.HandleFunc("GET /events", s.authed(s.events))
 	s.mux.HandleFunc("GET /lists/{id}", s.authed(s.pageList))
 	s.mux.HandleFunc("POST /lists", s.authed(s.formCreateList))
@@ -199,6 +206,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /lists/{id}/tasks", s.authed(s.formAddTask))
 	s.mux.HandleFunc("POST /tasks/{id}/toggle", s.authed(s.formToggleTask))
 	s.mux.HandleFunc("POST /tasks/{id}/edit", s.authed(s.formEditTask))
+	s.mux.HandleFunc("POST /tasks/{id}/assign", s.authed(s.formAssignTask))
 	s.mux.HandleFunc("POST /tasks/{id}/delete", s.authed(s.formDeleteTask))
 	s.mux.HandleFunc("POST /tasks/{id}/restore", s.authed(s.formRestoreTask))
 
@@ -207,6 +215,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/users", s.apiCreateUser)
 	s.mux.HandleFunc("GET /api/me", s.apiMe)
 	s.mux.HandleFunc("POST /api/join/{code}", s.apiJoin)
+	s.mux.HandleFunc("GET /api/mine", s.apiMine)
 	s.mux.HandleFunc("GET /api/lists", s.apiLists)
 	s.mux.HandleFunc("POST /api/lists", s.apiCreateList)
 	s.mux.HandleFunc("PATCH /api/lists/{id}", s.apiRenameList)
@@ -451,12 +460,13 @@ func (s *Server) mePost(w http.ResponseWriter, r *http.Request, u *store.User) {
 // ---- HTML UI ----------------------------------------------------------
 
 type pageData struct {
-	View         string // "dashboard", "list" or "today"
+	View         string // "dashboard", "list", "today" or "mine"
 	User         *store.User
 	Path         string // this page's URL, so actions can return here
 	Today        string // today's date, YYYY-MM-DD
 	TodayCount   int    // tasks overdue or due today, across all lists
 	TodayOverdue bool   // some of those are overdue
+	MineCount    int    // open tasks assigned to me, across all lists
 	Lists        []store.List
 	Current      *store.List
 	Tasks        []store.Task
@@ -481,7 +491,11 @@ func (s *Server) basePage(r *http.Request, u *store.User, view string) (pageData
 		return d, err
 	}
 	overdue, due, err := s.store.DueCounts(u.ID, d.Today)
+	if err != nil {
+		return d, err
+	}
 	d.TodayCount, d.TodayOverdue = overdue+due, overdue > 0
+	d.MineCount, err = s.store.AssignedCount(u.ID)
 	return d, err
 }
 
@@ -523,6 +537,20 @@ func (s *Server) pageToday(w http.ResponseWriter, r *http.Request, u *store.User
 		if len(g.Tasks) > 0 {
 			d.Groups = append(d.Groups, g)
 		}
+	}
+	s.renderTmpl(w, http.StatusOK, "page.html", d)
+}
+
+// pageMine is everything that is this person's job, across every list.
+func (s *Server) pageMine(w http.ResponseWriter, r *http.Request, u *store.User) {
+	d, err := s.basePage(r, u, "mine")
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if d.Tasks, err = s.store.AssignedTasks(u.ID); err != nil {
+		s.fail(w, err)
+		return
 	}
 	s.renderTmpl(w, http.StatusOK, "page.html", d)
 }
@@ -752,6 +780,34 @@ func (s *Server) formEditTask(w http.ResponseWriter, r *http.Request, u *store.U
 	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
 }
 
+// formAssignTask makes a task somebody's job. A blank "user" means nobody's.
+// Someone who is not on the list is refused by the store, and the page simply
+// comes back unchanged.
+func (s *Server) formAssignTask(w http.ResponseWriter, r *http.Request, u *store.User) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	t, _, err := s.store.TaskAccess(id, u.ID)
+	if err != nil {
+		s.htmlErr(w, r, err)
+		return
+	}
+	var assignee int64
+	if v := r.FormValue("user"); v != "" {
+		if assignee, err = strconv.ParseInt(v, 10, 64); err != nil {
+			http.Error(w, "invalid user", http.StatusBadRequest)
+			return
+		}
+	}
+	if _, err := s.store.AssignTask(id, assignee); err != nil && !errors.Is(err, store.ErrInvalid) {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
+}
+
 func (s *Server) formRestoreTask(w http.ResponseWriter, r *http.Request, u *store.User) {
 	id, ok := pathID(r)
 	if !ok {
@@ -840,6 +896,16 @@ func (s *Server) apiJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.respond(w, http.StatusOK, l, err)
+}
+
+// apiMine lists the open tasks assigned to the caller.
+func (s *Server) apiMine(w http.ResponseWriter, r *http.Request) {
+	if userID(r) == 0 {
+		writeError(w, http.StatusUnauthorized, "sign in first: send Authorization: Bearer <token>")
+		return
+	}
+	ts, err := s.store.AssignedTasks(userID(r))
+	s.respond(w, http.StatusOK, ts, err)
 }
 
 func (s *Server) apiLists(w http.ResponseWriter, r *http.Request) {
@@ -943,12 +1009,13 @@ func (s *Server) apiPatchTask(w http.ResponseWriter, r *http.Request) {
 		Title       *string `json:"title"`
 		Description *string `json:"description"`
 		DueDate     *string `json:"due_date"`
+		AssigneeID  *int64  `json:"assignee_id"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Done == nil && in.Title == nil && in.Description == nil && in.DueDate == nil {
-		writeError(w, http.StatusBadRequest, `provide at least one of "done", "title", "description", "due_date"`)
+	if in.Done == nil && in.Title == nil && in.Description == nil && in.DueDate == nil && in.AssigneeID == nil {
+		writeError(w, http.StatusBadRequest, `provide at least one of "done", "title", "description", "due_date", "assignee_id"`)
 		return
 	}
 	if _, _, err := s.store.TaskAccess(id, userID(r)); err != nil {
@@ -959,6 +1026,13 @@ func (s *Server) apiPatchTask(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if in.Title != nil || in.Description != nil || in.DueDate != nil {
 		t, err = s.store.UpdateTask(id, store.TaskUpdate{Title: in.Title, Description: in.Description, DueDate: in.DueDate})
+	}
+	if err == nil && in.AssigneeID != nil {
+		t, err = s.store.AssignTask(id, *in.AssigneeID)
+		if errors.Is(err, store.ErrInvalid) {
+			writeError(w, http.StatusBadRequest, "that person is not on this list")
+			return
+		}
 	}
 	if err == nil && in.Done != nil {
 		t, err = s.store.SetDone(id, *in.Done, userID(r))
