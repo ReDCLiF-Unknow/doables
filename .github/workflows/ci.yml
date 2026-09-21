@@ -67,17 +67,34 @@ jobs:
         id: img
         run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables" >> "$GITHUB_OUTPUT"
 
+      # Building it is not the same as it working, so start the image and
+      # check it actually serves the app before anything is published.
+      - name: Smoke-test the image
+        run: |
+          set -euo pipefail
+          docker buildx build --load -t doables:test .
+          docker run -d --name doables-test -p 8080:8080 doables:test
+          up=
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:8080/welcome > /dev/null; then up=1; break; fi
+            sleep 1
+          done
+          if [ -z "$up" ]; then
+            echo "::error::the container never started serving"
+            docker logs doables-test
+            exit 1
+          fi
+          curl -sf http://localhost:8080/manifest.webmanifest > /dev/null
+          curl -sf http://localhost:8080/static/icon-192.png > /dev/null
+          echo "the image starts and serves the app"
+          docker rm -f doables-test
+
       - name: Log in to ghcr.io
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-      - name: Build${{ github.ref == 'refs/heads/main' && ' and push' || '' }}
+      - name: Publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
-          args=(--platform linux/amd64,linux/arm64 -f Dockerfile .)
-          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
-            args+=(--push -t '${{ steps.img.outputs.name }}:latest' -t '${{ steps.img.outputs.name }}:${{ github.sha }}')
-          else
-            args+=(--output type=cacheonly)   # pull requests verify the build without publishing
-          fi
-          docker buildx build "${args[@]}"
+          docker buildx build --platform linux/amd64,linux/arm64 --push             -t '${{ steps.img.outputs.name }}:latest'             -t '${{ steps.img.outputs.name }}:${{ github.sha }}' .
