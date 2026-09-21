@@ -1,0 +1,165 @@
+name: Verify the published image
+
+# The other workflows test the code in this repository. This one tests what
+# people are actually told to run: it pulls the published image onto a runner
+# that has never seen this project, with no credentials, and walks through the
+# instructions from the README and the release notes.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to verify, e.g. latest or v1.0.0"
+        default: latest
+        required: true
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, so a broken published image doesn't sit unnoticed
+
+permissions:
+  contents: read
+
+jobs:
+  # The documented path, end to end: pull, run, use the app, restart it, and
+  # replace the container to prove the database really does live in the volume.
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Work out the image
+        id: img
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables:${{ inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull it as a stranger would
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          docker pull '${{ steps.img.outputs.ref }}'
+          docker image inspect '${{ steps.img.outputs.ref }}' --format 'architecture: {{.Architecture}}, size: {{.Size}} bytes, user: {{.Config.User}}'
+
+      - name: Start it exactly as the instructions say
+        run: docker run -d --name doables -p 8080:8080 -v doables:/data '${{ steps.img.outputs.ref }}'
+
+      - name: Wait for it to serve
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:8080/welcome > /dev/null; then
+              echo "serving"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::it never started serving"
+          docker logs doables
+          exit 1
+
+      - name: The pages a browser asks for
+        run: |
+          set -euo pipefail
+          curl -sf http://localhost:8080/welcome | grep -q "Doables"
+          curl -sf http://localhost:8080/manifest.webmanifest | jq -e '.name == "Doables"' > /dev/null
+          curl -sf -o /dev/null http://localhost:8080/static/icon-192.png
+          curl -sf -o /dev/null http://localhost:8080/static/icon-512.png
+          echo "welcome page, manifest and icons all served"
+
+      - name: Use the app through its API
+        run: |
+          set -euo pipefail
+          token=$(curl -sf -X POST http://localhost:8080/api/users -d '{"name":"Alex"}' | jq -r .token)
+          test -n "$token" && test "$token" != null
+          auth="Authorization: Bearer $token"
+
+          list=$(curl -sf -X POST http://localhost:8080/api/lists -H "$auth" -d '{"name":"Groceries"}' | jq -r .id)
+          task=$(curl -sf -X POST "http://localhost:8080/api/lists/$list/tasks" -H "$auth" -d '{"title":"Buy milk","description":"2 litres","due_date":"2026-10-01"}' | jq -r .id)
+          curl -sf -X PATCH "http://localhost:8080/api/tasks/$task" -H "$auth" -d '{"done":true}' > /dev/null
+
+          curl -sf "http://localhost:8080/api/lists/$list/tasks" -H "$auth" | jq -e '.[0] | .title == "Buy milk" and .done == true and .due_date == "2026-10-01"' > /dev/null
+          echo "registered, made a list, added a task and ticked it off"
+
+          # A stranger must not see someone else's list.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/api/lists/$list/tasks")
+          test "$code" = 404 || { echo "::error::an anonymous request got $code for a private list, expected 404"; exit 1; }
+          echo "a private list is invisible to everyone else ($code)"
+
+          echo "$token" > token.txt
+
+      - name: The CLI that ships in the image
+        run: |
+          set -euo pipefail
+          token=$(cat token.txt)
+          docker exec doables doables -s http://127.0.0.1:8080 -t "$token" whoami
+          docker exec doables doables -s http://127.0.0.1:8080 -t "$token" lists
+          docker exec doables doables -s http://127.0.0.1:8080 -t "$token" tasks 1
+
+      - name: It is not running as root
+        run: |
+          set -euo pipefail
+          uid=$(docker exec doables id -u)
+          test "$uid" = 10001 || { echo "::error::running as uid $uid, expected 10001"; exit 1; }
+          echo "running as uid $uid"
+
+      - name: The database survives an upgrade
+        run: |
+          set -euo pipefail
+          token=$(cat token.txt)
+          # Not a restart: throw the container away and start a new one on the
+          # same volume, which is what upgrading to a newer image does.
+          docker rm -f doables > /dev/null
+          docker run -d --name doables -p 8080:8080 -v doables:/data '${{ steps.img.outputs.ref }}'
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8080/welcome > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:8080/api/lists/1/tasks -H "Authorization: Bearer $token" | jq -e '.[0].title == "Buy milk"' > /dev/null
+          echo "the task is still there in a brand new container"
+
+      - name: Logs, in case they say something ugly
+        if: always()
+        run: docker logs doables 2>&1 | tail -30
+
+      - name: Tidy up
+        if: always()
+        run: docker rm -f doables > /dev/null 2>&1 || true
+
+  # The README claims a Raspberry Pi works. Check the arm64 half of the image
+  # actually boots, under emulation.
+  arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Work out the image
+        id: img
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables:${{ inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - name: Run the arm64 image
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          docker run -d --name doables-arm --platform linux/arm64 -p 8080:8080 '${{ steps.img.outputs.ref }}'
+          arch=$(docker exec doables-arm uname -m)
+          test "$arch" = aarch64 || { echo "::error::got $arch, expected aarch64"; exit 1; }
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:8080/welcome > /dev/null && { echo "the $arch image serves the app"; docker rm -f doables-arm > /dev/null; exit 0; }
+            sleep 2
+          done
+          echo "::error::the arm64 image never started serving"
+          docker logs doables-arm
+          exit 1
+
+  # The other documented way in.
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker compose up
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          docker compose up -d
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8080/welcome > /dev/null && { echo "compose works"; docker compose down -v; exit 0; }
+            sleep 1
+          done
+          echo "::error::compose never came up"
+          docker compose logs
+          exit 1
