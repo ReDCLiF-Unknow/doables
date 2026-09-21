@@ -51,8 +51,9 @@ jobs:
           done
 
   # Builds the image on every run so the Dockerfile cannot quietly rot, and
-  # publishes it only from main. ghcr.io/<owner>/doables:latest tracks main;
-  # release tags add their own version number.
+  # publishes it only from main, as ghcr.io/<owner>/doables:main. The :latest
+  # tag belongs to the release workflow, so someone who pulls :latest gets the
+  # newest release rather than whatever main happens to be today.
   docker:
     runs-on: ubuntu-latest
     permissions:
@@ -97,4 +98,6 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
-          docker buildx build --platform linux/amd64,linux/arm64 --push             -t '${{ steps.img.outputs.name }}:latest'             -t '${{ steps.img.outputs.name }}:${{ github.sha }}' .
+          docker buildx build --platform linux/amd64,linux/arm64 --push \
+            -t '${{ steps.img.outputs.name }}:main' \
+            -t '${{ steps.img.outputs.name }}:${{ github.sha }}' .

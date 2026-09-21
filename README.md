@@ -35,6 +35,9 @@ docker run -d --name doables -p 8080:8080 -v doables:/data ghcr.io/redclif-unkno
 Or with the [compose file](compose.yaml): `docker compose up -d`. The database lives in the `/data`
 volume, so it survives upgrades. Images are built for amd64 and arm64, so a Raspberry Pi works too.
 
+`:latest` is the newest release; pin a version instead (`:v1.0.0`) if you'd rather upgrade
+deliberately. `:main` is built from the development branch and is not promised to work.
+
 **A prebuilt binary** — download the archive for your system from the
 [latest release](https://github.com/ReDCLiF-Unknow/doables/releases/latest), unpack it, and run
 `doables-server`. There is nothing to install alongside it: the database is a single SQLite file
