@@ -1,0 +1,13 @@
+.git
+.github
+bin/
+dist/
+build/
+stats/
+docs/
+*.db
+*.db-*
+*.log
+compose.yaml
+Dockerfile
+.dockerignore

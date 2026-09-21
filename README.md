@@ -1,5 +1,6 @@
 # Doables
 
+[![CI](https://github.com/ReDCLiF-Unknow/doables/actions/workflows/ci.yml/badge.svg)](https://github.com/ReDCLiF-Unknow/doables/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ReDCLiF-Unknow/doables)](https://github.com/ReDCLiF-Unknow/doables/releases)
 [![Downloads](https://img.shields.io/github/downloads/ReDCLiF-Unknow/doables/total)](https://github.com/ReDCLiF-Unknow/doables/releases)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
@@ -7,12 +8,39 @@
 A small to-do list app you can share: Go, SQLite, `html/template`, and the [Tabler](https://tabler.io) UI + Tabler Icons (loaded from a CDN).
 Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/list-dark.png">
+  <img alt="A shared list in Doables: tasks with due dates, who added each one and who finished it" src="docs/list-light.png">
+</picture>
+
+<table>
+<tr>
+<td width="62%"><img alt="The Today view, gathering everything due across every list" src="docs/today-dark.png"></td>
+<td width="38%"><img alt="Doables on a narrow screen, with a bottom tab bar" src="docs/mobile-dark.png"></td>
+</tr>
+<tr>
+<td><em>Today, across all your lists</em></td>
+<td><em>On a narrow screen</em></td>
+</tr>
+</table>
+
 ## Install
 
-Download the archive for your system from the
+**Docker** — the image carries both binaries and nothing else is needed:
+
+```
+docker run -d --name doables -p 8080:8080 -v doables:/data ghcr.io/redclif-unknow/doables:latest
+```
+
+Or with the [compose file](compose.yaml): `docker compose up -d`. The database lives in the `/data`
+volume, so it survives upgrades. Images are built for amd64 and arm64, so a Raspberry Pi works too.
+
+**A prebuilt binary** — download the archive for your system from the
 [latest release](https://github.com/ReDCLiF-Unknow/doables/releases/latest), unpack it, and run
-`doables-server`. Then open <http://localhost:8080>. There is nothing else to install: the database
-is a single SQLite file created on first run.
+`doables-server`. There is nothing to install alongside it: the database is a single SQLite file
+created on first run.
+
+Either way, open <http://localhost:8080> and pick a name.
 
 ## Run from source
 
@@ -123,6 +151,9 @@ Dates are `YYYY-MM-DD`.
 ```
 go test ./...
 ```
+
+Every push and pull request runs the same tests on GitHub, along with `gofmt`, `go vet`,
+a cross-compile of each released platform, and a build of the Docker image.
 
 ## Who is downloading it
 

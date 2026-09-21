@@ -1,0 +1,83 @@
+name: CI
+
+# Runs on every push and pull request, so a change that breaks the build is
+# caught straight away rather than at release time.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      # The release builds every platform from one runner, so check they still
+      # compile here rather than finding out while cutting a tag.
+      - name: Cross-compile
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
+            export GOOS=${target%/*} GOARCH=${target#*/}
+            echo "building $GOOS/$GOARCH"
+            go build -o /dev/null ./cmd/server
+            go build -o /dev/null ./cmd/doables
+          done
+
+  # Builds the image on every run so the Dockerfile cannot quietly rot, and
+  # publishes it only from main. ghcr.io/<owner>/doables:latest tracks main;
+  # release tags add their own version number.
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Work out the image name
+        id: img
+        run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ghcr.io
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+      - name: Build${{ github.ref == 'refs/heads/main' && ' and push' || '' }}
+        run: |
+          set -euo pipefail
+          args=(--platform linux/amd64,linux/arm64 -f Dockerfile .)
+          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
+            args+=(--push -t '${{ steps.img.outputs.name }}:latest' -t '${{ steps.img.outputs.name }}:${{ github.sha }}')
+          else
+            args+=(--output type=cacheonly)   # pull requests verify the build without publishing
+          fi
+          docker buildx build "${args[@]}"

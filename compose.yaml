@@ -1,0 +1,13 @@
+services:
+  doables:
+    # Use the published image, or swap for `build: .` to build from this checkout.
+    image: ghcr.io/redclif-unknow/doables:latest
+    container_name: doables
+    ports:
+      - "8080:8080"
+    volumes:
+      - doables-data:/data
+    restart: unless-stopped
+
+volumes:
+  doables-data:
