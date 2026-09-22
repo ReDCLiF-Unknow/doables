@@ -115,7 +115,8 @@ CREATE TABLE IF NOT EXISTS lists (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	name        TEXT NOT NULL,
 	owner_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
-	invite_code TEXT
+	invite_code TEXT,
+	deleted_at  TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS list_members (
 	list_id   INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
@@ -174,6 +175,7 @@ func (s *Store) migrate() error {
 		{"users", "token_saved", "INTEGER NOT NULL DEFAULT 0"},
 		{"lists", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"lists", "invite_code", "TEXT"},
+		{"lists", "deleted_at", "TIMESTAMP"},
 		{"tasks", "added_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"tasks", "done_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"tasks", "assigned_to", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
@@ -424,8 +426,11 @@ func (s *Store) firstList(where string, args ...any) (List, error) {
 }
 
 // visibleLists is a SQL condition on the lists table (alias l) matching the
-// lists a user can see; it takes one argument, the user ID.
-const visibleLists = `(l.owner_id IS NULL OR l.id IN (SELECT list_id FROM list_members WHERE user_id = ?))`
+// lists a user can see; it takes one argument, the user ID. A list in the
+// trash is not one of them, which also hides its tasks from Today and My
+// tasks without those queries having to think about it.
+const visibleLists = `(l.deleted_at IS NULL
+	AND (l.owner_id IS NULL OR l.id IN (SELECT list_id FROM list_members WHERE user_id = ?)))`
 
 // Lists returns the lists userID can see: the ones they belong to, plus all
 // public ones. Pass 0 for an anonymous caller, who sees only public lists.
@@ -436,7 +441,7 @@ func (s *Store) Lists(userID int64) ([]List, error) {
 // Access returns the list if userID may see it, and ErrNotFound otherwise, so
 // that lists you cannot see look exactly like lists that do not exist.
 func (s *Store) Access(listID, userID int64) (List, error) {
-	l, err := s.firstList(`WHERE l.id = ?`, listID)
+	l, err := s.firstList(`WHERE l.id = ? AND l.deleted_at IS NULL`, listID)
 	if err != nil || l.Public() {
 		return l, err
 	}
@@ -452,7 +457,7 @@ func (s *Store) ListByInvite(code string) (List, error) {
 	if code == "" {
 		return List{}, ErrNotFound
 	}
-	return s.firstList(`WHERE l.invite_code = ?`, code)
+	return s.firstList(`WHERE l.invite_code = ? AND l.deleted_at IS NULL`, code)
 }
 
 // CreateList makes a new list owned by ownerID. With ownerID 0 the list is
@@ -497,13 +502,34 @@ func (s *Store) RenameList(id int64, name string) error {
 	return nil
 }
 
+// DeleteList moves a list, and everything on it, to the trash. Like a deleted
+// task it can be brought back for a day, after which it is gone for good.
 func (s *Store) DeleteList(id int64) error {
-	ids, all := s.recipients(id) // gather before the members disappear
-	if err := s.affected(s.db.Exec(`DELETE FROM lists WHERE id = ?`, id)); err != nil {
+	ids, all := s.recipients(id) // gather before the list stops being visible
+	if err := s.affected(s.db.Exec(
+		`UPDATE lists SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`, id)); err != nil {
 		return err
 	}
+	s.purgeTrash()
 	s.publish(ids, all)
 	return nil
+}
+
+// RestoreList undoes a delete, if userID is the one who could delete it: its
+// owner, or anyone at all when it is public.
+func (s *Store) RestoreList(id, userID int64) (List, error) {
+	l, err := s.firstList(`WHERE l.id = ? AND l.deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return List{}, err
+	}
+	if !l.Public() && l.OwnerID != userID {
+		return List{}, ErrNotFound
+	}
+	if err := s.affected(s.db.Exec(`UPDATE lists SET deleted_at = NULL WHERE id = ?`, id)); err != nil {
+		return List{}, err
+	}
+	s.changed(id)
+	return s.firstList(`WHERE l.id = ?`, id)
 }
 
 // ClaimList makes userID the owner of a public list, making it private.
@@ -809,7 +835,13 @@ func (s *Store) RestoreTask(id, userID int64) (Task, error) {
 
 // purgeTrash permanently removes tasks deleted more than a day ago.
 func (s *Store) purgeTrash() error {
-	_, err := s.db.Exec(`DELETE FROM tasks WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, trashRetention)
+	if _, err := s.db.Exec(
+		`DELETE FROM tasks WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, trashRetention); err != nil {
+		return err
+	}
+	// Tasks and memberships go with the list: they are ON DELETE CASCADE.
+	_, err := s.db.Exec(
+		`DELETE FROM lists WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, trashRetention)
 	return err
 }
 

@@ -84,8 +84,9 @@ font down to the icons the templates actually use (8KB rather than 844KB).
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
   lists: **Overdue**, **Today** and **Next 7 days**. Its badge counts what is overdue or due today (red when
   something is overdue). "Today" is the server's local date.
-- **Undo delete.** Deleting a task shows a "Task deleted · Undo" toast. Deleted tasks are kept for a day and
-  then purged.
+- **Undo delete.** Deleting a task shows a "Task deleted · Undo" toast, and so does deleting a whole list,
+  which takes its tasks and members with it. Either can be brought back for a day, after which it is purged.
+  Only the list's owner can undo a deleted list.
 - **Live and in place.** Ticking, adding, editing and deleting don't reload the page, and changes made by other
   people (or the CLI) appear on your screen within a moment, via server-sent events (`/events`). If you're in
   the middle of editing something, that part waits until you're done so nothing you're typing is overwritten.
@@ -144,6 +145,7 @@ doables lists
 doables rename-list 1 "Weekly shop"
 doables rm 1          # delete task
 doables rm-list 1     # delete list and its tasks (owner only)
+doables restore-list 1   # undo that, within a day
 
 doables invite 1                       # print the invite link for a list
 doables join http://host:8080/join/CODE   # join a list (link or bare code)
@@ -169,7 +171,8 @@ Dates are `YYYY-MM-DD`.
 | GET | `/api/lists` | |
 | POST | `/api/lists` | `{"name": "..."}` |
 | PATCH | `/api/lists/{id}` | `{"name": "..."}` (any member) |
-| DELETE | `/api/lists/{id}` | owner only |
+| DELETE | `/api/lists/{id}` | owner only; the list can be restored for a day |
+| POST | `/api/lists/{id}/restore` | owner only, within a day of deleting it |
 | GET | `/api/lists/{id}/members` | |
 | GET | `/api/lists/{id}/tasks` | |
 | POST | `/api/lists/{id}/tasks` | `{"title": "...", "description": "...", "due_date": "..."}` |

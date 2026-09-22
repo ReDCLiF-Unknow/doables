@@ -90,7 +90,21 @@ func main() {
 			if err := check(client.R().Delete("/api/lists/" + id)); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Deleted list %s\n", id)
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted list %s. It can be brought back for a day: doables restore-list %s\n", id, id)
+			return nil
+		}}
+
+	restoreList := &cobra.Command{Use: "restore-list LIST_ID", Short: "Undo deleting a list, within a day", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			var l store.List
+			if err := check(client.R().SetResult(&l).Post("/api/lists/" + id + "/restore")); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Restored list %d: %s\n", l.ID, l.Name)
 			return nil
 		}}
 
@@ -330,6 +344,7 @@ func main() {
 
 	root.AddCommand(register, whoami, invite, join, members)
 	root.AddCommand(edit, renameList, assign, mine)
+	root.AddCommand(restoreList)
 	root.AddCommand(lists, newList, rmList, tasks, add,
 		setDone("done", "Mark a task as done", true),
 		setDone("undone", "Mark a task as not done", false),

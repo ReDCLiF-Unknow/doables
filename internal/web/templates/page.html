@@ -130,7 +130,7 @@
               <div class="dropdown">
                 <button type="button" class="btn btn-icon" data-bs-toggle="dropdown" aria-expanded="false" title="More" aria-label="More actions"><i class="ti ti-dots"></i></button>
                 <div class="dropdown-menu dropdown-menu-end">
-                  <form method="post" action="/lists/{{.ID}}/delete" onsubmit="return confirm('Delete this list and all its tasks for everyone?')">
+                  <form method="post" action="/lists/{{.ID}}/delete" onsubmit="return confirm('Delete this list and all its tasks, for everyone? You can undo this for a day.')">
                     <button class="dropdown-item text-danger" type="submit"><i class="ti ti-trash me-2"></i>Delete list</button>
                   </form>
                 </div>
@@ -576,6 +576,28 @@
       .then(function (html) { if (html !== null) apply(html); })
       .catch(function () { toast('Could not restore the task.'); });
   }
+
+  // A deleted list sends us to the dashboard, so the server passes the offer
+  // to undo along in the URL rather than trying to keep a toast alive across
+  // the navigation.
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var deleted = params.get('undo');
+    if (!deleted) return;
+    params.delete('undo');
+    var clean = location.pathname + (params.toString() ? '?' + params : '');
+    history.replaceState(null, '', clean);   // so a refresh does not offer it again
+    toast('List deleted', {
+      label: 'Undo',
+      run: function () {
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = '/lists/' + encodeURIComponent(deleted) + '/restore';
+        document.body.appendChild(form);
+        form.submit();   // a full navigation: it takes us back to the list
+      }
+    }, 10000);
+  })();
 
   // The button that submits a form can carry a value of its own (the assign
   // menu posts a person's id that way). Older browsers leave it out of

@@ -215,6 +215,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /lists", s.authed(s.formCreateList))
 	s.mux.HandleFunc("POST /lists/{id}/rename", s.authed(s.formRenameList))
 	s.mux.HandleFunc("POST /lists/{id}/delete", s.authed(s.formDeleteList))
+	s.mux.HandleFunc("POST /lists/{id}/restore", s.authed(s.formRestoreList))
 	s.mux.HandleFunc("POST /lists/{id}/claim", s.authed(s.formClaimList))
 	s.mux.HandleFunc("POST /lists/{id}/invite/reset", s.authed(s.formResetInvite))
 	s.mux.HandleFunc("POST /lists/{id}/leave", s.authed(s.formLeaveList))
@@ -238,6 +239,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/lists", s.apiCreateList)
 	s.mux.HandleFunc("PATCH /api/lists/{id}", s.apiRenameList)
 	s.mux.HandleFunc("DELETE /api/lists/{id}", s.apiDeleteList)
+	s.mux.HandleFunc("POST /api/lists/{id}/restore", s.apiRestoreList)
 	s.mux.HandleFunc("GET /api/lists/{id}/members", s.apiMembers)
 	s.mux.HandleFunc("GET /api/lists/{id}/tasks", s.apiTasks)
 	s.mux.HandleFunc("POST /api/lists/{id}/tasks", s.apiAddTask)
@@ -689,7 +691,24 @@ func (s *Server) formDeleteList(w http.ResponseWriter, r *http.Request, u *store
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// Deleting a list takes the browser somewhere else, so the offer to undo
+	// has to survive the journey: the dashboard turns this into a toast.
+	http.Redirect(w, r, "/?undo="+strconv.FormatInt(l.ID, 10), http.StatusSeeOther)
+}
+
+// formRestoreList takes a list back out of the trash.
+func (s *Server) formRestoreList(w http.ResponseWriter, r *http.Request, u *store.User) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	l, err := s.store.RestoreList(id, u.ID)
+	if err != nil {
+		s.htmlErr(w, r, err)
+		return
+	}
+	http.Redirect(w, r, listPath(l.ID), http.StatusSeeOther)
 }
 
 func (s *Server) formClaimList(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -978,6 +997,17 @@ func (s *Server) apiDeleteList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// apiRestoreList takes a list back out of the trash, for the day it stays there.
+func (s *Server) apiRestoreList(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	l, err := s.store.RestoreList(id, userID(r))
+	s.respond(w, http.StatusOK, l, err)
 }
 
 func (s *Server) apiMembers(w http.ResponseWriter, r *http.Request) {
