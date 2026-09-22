@@ -183,6 +183,14 @@ func TestCLIComplainsClearly(t *testing.T) {
 		}
 	}
 
+	// A list needs an owner, and the message says how to get one.
+	c.token = ""
+	if out, err := c.try("new-list", "Ownerless"); err == nil {
+		t.Errorf("a list was created with no token:\n%s", out)
+	} else if !strings.Contains(err.Error(), "register") {
+		t.Errorf("creating a list without a token said %q, which does not say what to do", err)
+	}
+
 	// An invite for a public list cannot exist, and says why.
 	c.signIn("Alex")
 	if out, err := c.try("invite", "999"); err == nil {

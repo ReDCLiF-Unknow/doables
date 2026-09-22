@@ -112,9 +112,10 @@ gives their browser a secret token (in an `HttpOnly` cookie; only a hash is stor
   who finished them.
 - The **owner** can remove members, create a new invite link (which stops the old one working) and delete
   the list. Members can leave.
-- Lists created before sharing existed (or by the CLI without a token) are **public**: anyone who can reach
-  the server sees them. Open one and click **Claim this list** to make it private. A public list has no
-  members, so nothing in it can be assigned until somebody claims it.
+- Lists created before sharing existed are **public**: they have no owner, so anyone who can reach the
+  server sees and edits them. Open one and click **Claim this list** to make it private. A public list has
+  no members, so nothing in it can be assigned until somebody claims it. New lists are never public: making
+  one needs a token, so it always belongs to somebody.
 - **Profile** (bottom of the sidebar) lets you rename yourself and shows your token. Paste it on another
   device ("Already use Doables on another device?") to sign in as yourself there. Clearing your cookies
   without saving the token means losing that identity, with no password to reset and no email to send,
@@ -154,8 +155,9 @@ doables whoami
 ```
 
 Use `-s http://host:port` / `DOABLES_SERVER` to pick the server (default `http://localhost:8080`) and
-`-t TOKEN` / `DOABLES_TOKEN` for your identity. Without a token you act anonymously and only see public lists.
-If you already have a token from the web UI's Profile window, use that one instead of registering.
+`-t TOKEN` / `DOABLES_TOKEN` for your identity. Without a token you act anonymously: you can see and edit
+public lists, but not create a list, since it would belong to nobody. If you already have a token from the
+web UI's Profile window, use that one instead of registering.
 
 ## JSON API
 
@@ -169,7 +171,7 @@ Dates are `YYYY-MM-DD`.
 | POST | `/api/join/{code}` | |
 | GET | `/api/mine` | open tasks assigned to you, across every list |
 | GET | `/api/lists` | |
-| POST | `/api/lists` | `{"name": "..."}` |
+| POST | `/api/lists` | `{"name": "..."}`; needs a token, so the list has an owner |
 | PATCH | `/api/lists/{id}` | `{"name": "..."}` (any member) |
 | DELETE | `/api/lists/{id}` | owner only; the list can be restored for a day |
 | POST | `/api/lists/{id}/restore` | owner only, within a day of deleting it |

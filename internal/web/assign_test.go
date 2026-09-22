@@ -116,10 +116,9 @@ func TestPatchStillNeedsSomethingToDo(t *testing.T) {
 // nobody for a task to belong to.
 func TestPublicListsHaveNobodyToAssignTo(t *testing.T) {
 	e := newEnv(t)
-	var l store.List
-	e.call("POST", "/api/lists", "", `{"name":"Shed"}`, &l)
+	l := e.legacyPublicList("Shed")
 	if !l.Public() {
-		t.Fatalf("a list made without a token should be public: %+v", l)
+		t.Fatalf("an ownerless list should be public: %+v", l)
 	}
 	alice := e.register("Alice")
 	aliceID := e.me(alice).ID

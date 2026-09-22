@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"doables/internal/store"
 )
 
 // There are no passwords here: whoever holds the token is the account, and
@@ -44,4 +46,35 @@ func TestTheKeyReminderStaysUntilAcknowledged(t *testing.T) {
 	if resp.StatusCode == 303 && resp.Header.Get("Location") == "/" {
 		t.Error("an anonymous request dismissed somebody's reminder")
 	}
+}
+
+// A list with no owner is readable and editable by anyone who can reach the
+// server. Databases from before sharing have such lists and must keep working,
+// but nobody should be able to make one by forgetting a token.
+func TestListsCannotBeMadeWithoutAnOwner(t *testing.T) {
+	e := newEnv(t)
+
+	var err struct {
+		Error string `json:"error"`
+	}
+	want(t, "anonymous creates a list", e.call("POST", "/api/lists", "", `{"name":"Shed"}`, &err), 401)
+	if !strings.Contains(err.Error, "register") {
+		t.Errorf("the refusal does not say what to do instead: %q", err.Error)
+	}
+
+	// With an identity it works, and the list belongs to them.
+	alice := e.register("Alice")
+	var l store.List
+	want(t, "Alice creates a list", e.call("POST", "/api/lists", alice, `{"name":"Shed"}`, &l), 201)
+	if l.Public() {
+		t.Errorf("a list made with a token should not be public: %+v", l)
+	}
+
+	// The ones already out there still work: readable, editable, claimable.
+	old := e.legacyPublicList("From an old database")
+	id := "/api/lists/" + itoa(old.ID)
+	want(t, "anyone reads it", e.call("GET", id+"/tasks", "", "", nil), 200)
+	want(t, "anyone adds to it", e.call("POST", id+"/tasks", "", `{"title":"still works"}`, nil), 201)
+	want(t, "claiming it", e.form(alice, "/lists/"+itoa(old.ID)+"/claim", url.Values{}).StatusCode, 303)
+	want(t, "and then it is private", e.call("GET", id+"/tasks", "", "", nil), 404)
 }

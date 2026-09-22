@@ -299,7 +299,7 @@ func TestLiveUpdatesReachOnlyThePeopleWhoCanSeeTheList(t *testing.T) {
 	expectQuiet(t, "removed Bob sees later changes", bobEvents)
 
 	// Public lists are visible to everyone, so changes reach everyone.
-	pub := e.newList("", "Public")
+	pub := e.legacyPublicList("Public")
 	expectSignal(t, "Carol sees a public list appear", carolEvents)
 	e.call("POST", "/api/lists/"+itoa(pub.ID)+"/tasks", "", `{"title":"hello"}`, nil)
 	expectSignal(t, "Carol sees a public task", carolEvents)

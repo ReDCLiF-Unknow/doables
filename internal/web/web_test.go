@@ -17,6 +17,7 @@ import (
 type env struct {
 	t   *testing.T
 	srv *httptest.Server
+	st  *store.Store // for making the kind of data only an old database has
 }
 
 func newEnv(t *testing.T) *env {
@@ -27,7 +28,19 @@ func newEnv(t *testing.T) *env {
 	}
 	srv := httptest.NewServer(New(s))
 	t.Cleanup(func() { srv.Close(); s.Close() })
-	return &env{t: t, srv: srv}
+	return &env{t: t, srv: srv, st: s}
+}
+
+// legacyPublicList makes an ownerless list, the sort that exists in databases
+// from before sharing. The app will not make one any more, but it still has to
+// cope with the ones that are out there.
+func (e *env) legacyPublicList(name string) store.List {
+	e.t.Helper()
+	l, err := e.st.CreateList(name, 0)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return l
 }
 
 // noRedirect lets tests inspect redirects instead of following them.
@@ -181,10 +194,10 @@ func TestPublicListsCanBeClaimed(t *testing.T) {
 	e := newEnv(t)
 	alice, bob := e.register("Alice"), e.register("Bob")
 
-	// Anonymous (old-style) creation makes a public list everyone can use.
-	pub := e.newList("", "Old list")
+	// A list from before sharing existed belongs to nobody, so everyone can use it.
+	pub := e.legacyPublicList("Old list")
 	if !pub.Public() {
-		t.Fatalf("anonymous list should be public: %+v", pub)
+		t.Fatalf("an ownerless list should be public: %+v", pub)
 	}
 	id := "/api/lists/" + itoa(pub.ID)
 	want(t, "anonymous adds to public list", e.call("POST", id+"/tasks", "", `{"title":"a"}`, nil), 201)

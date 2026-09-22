@@ -967,6 +967,15 @@ func (s *Server) apiLists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiCreateList(w http.ResponseWriter, r *http.Request) {
+	// A list made without a token would belong to nobody, which means everyone
+	// who can reach this server can read and edit it. That is how the public
+	// lists in older databases came about, and it surprises people. Old ones
+	// still work; new ones are not made by accident.
+	if userID(r) == 0 {
+		writeError(w, http.StatusUnauthorized,
+			`a list needs an owner: run "doables register <name>" and use the token it prints`)
+		return
+	}
 	var in struct {
 		Name string `json:"name"`
 	}
