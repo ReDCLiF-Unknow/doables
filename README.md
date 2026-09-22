@@ -116,7 +116,8 @@ gives their browser a secret token (in an `HttpOnly` cookie; only a hash is stor
   members, so nothing in it can be assigned until somebody claims it.
 - **Profile** (bottom of the sidebar) lets you rename yourself and shows your token. Paste it on another
   device ("Already use Doables on another device?") to sign in as yourself there. Clearing your cookies
-  without saving the token means losing that identity.
+  without saving the token means losing that identity, with no password to reset and no email to send,
+  so every page says so until you have saved it (copying it counts).
 
 Anyone holding an invite link can join, so treat it like a password and reset it if it leaks. If you expose
 the server beyond your own network, put it behind HTTPS so tokens and cookies are protected. If you put it

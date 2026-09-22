@@ -203,6 +203,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /join/{code}", s.joinPost)
 	s.mux.HandleFunc("GET /me", s.authed(s.meGet))
 	s.mux.HandleFunc("GET /me/token", s.authed(s.meToken))
+	s.mux.HandleFunc("POST /me/token/saved", s.authed(s.meTokenSaved))
 	s.mux.HandleFunc("POST /me", s.authed(s.mePost))
 
 	// HTML UI
@@ -468,6 +469,16 @@ func (s *Server) meToken(w http.ResponseWriter, r *http.Request, u *store.User) 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": tokenFrom(r)})
+}
+
+// meTokenSaved records that someone has their token somewhere safe. There is
+// no way back from losing it, so until this is set every page says so.
+func (s *Server) meTokenSaved(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if err := s.store.MarkTokenSaved(u.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, backTo(r, "/"), http.StatusSeeOther)
 }
 
 // mePost renames the caller. A blank or over-long name leaves it unchanged

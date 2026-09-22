@@ -148,6 +148,30 @@
     <div class="page-body">
       <div class="container-xl">
 
+      <!-- There are no passwords, so the token is the only way back in. Say so
+           until they tell us they have it somewhere. -->
+      <div data-live="key-banner">
+      {{if not .User.TokenSaved}}
+      <div class="alert alert-info d-flex align-items-center" role="status">
+        <i class="ti ti-key fs-2 me-3"></i>
+        <div class="flex-fill">
+          <strong>Save your sign-in key.</strong>
+          It is the only way back into this account. Clear your browser's data without it and these
+          lists are gone: there is no password to reset and no email to send.
+        </div>
+        <div class="d-flex gap-2 ms-3">
+          <button class="btn" type="button" data-bs-toggle="modal" data-bs-target="#profile-modal">
+            <i class="ti ti-eye me-1"></i>Show it
+          </button>
+          <form method="post" action="/me/token/saved" data-inplace data-toast="Reminder dismissed">
+            <input type="hidden" name="next" value="{{.Path}}">
+            <button class="btn btn-info" type="submit"><i class="ti ti-check me-1"></i>I've saved it</button>
+          </form>
+        </div>
+      </div>
+      {{end}}
+      </div>
+
       {{if eq .View "today"}}
         <!-- Today: everything due, across all lists -->
         <div data-live="tasks">
@@ -634,7 +658,11 @@
         return navigator.clipboard ? navigator.clipboard.writeText(tokenInput.value) : Promise.reject();
       }).catch(function () {
         var was = tokenInput.type; tokenInput.type = 'text'; tokenInput.select(); document.execCommand('copy'); tokenInput.type = was;
-      }).then(function () { copyToken.innerHTML = '<i class="ti ti-check me-1"></i>Copied'; });
+      }).then(function () {
+        copyToken.innerHTML = '<i class="ti ti-check me-1"></i>Copied';
+        // Having it on the clipboard counts as having it, so stop nagging.
+        return post('/me/token/saved', new URLSearchParams({ next: location.pathname + location.search }));
+      }).then(function (html) { if (html) apply(html); });
       return;
     }
     var copy = e.target.closest('#copy-invite');

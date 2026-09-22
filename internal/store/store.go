@@ -34,6 +34,11 @@ const (
 type User struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+	// TokenSaved is whether this person has said they have their token
+	// somewhere safe. Losing it means losing the account, so until they
+	// say so, every page reminds them. Kept out of the API: it is about
+	// nagging someone in a browser, not about the data.
+	TokenSaved bool `json:"-"`
 }
 
 type Member struct {
@@ -100,10 +105,11 @@ type Store struct {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
-	id         INTEGER PRIMARY KEY AUTOINCREMENT,
-	name       TEXT NOT NULL,
-	token_hash TEXT NOT NULL UNIQUE,
-	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	name        TEXT NOT NULL,
+	token_hash  TEXT NOT NULL UNIQUE,
+	created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	token_saved INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS lists (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +171,7 @@ func (s *Store) SetNotifier(fn func(userIDs []int64, all bool)) { s.notify = fn 
 // migrate upgrades databases created by earlier versions.
 func (s *Store) migrate() error {
 	for _, c := range []struct{ table, column, def string }{
+		{"users", "token_saved", "INTEGER NOT NULL DEFAULT 0"},
 		{"lists", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"lists", "invite_code", "TEXT"},
 		{"tasks", "added_by", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
@@ -350,11 +357,19 @@ func (s *Store) UserByToken(token string) (User, error) {
 	if token == "" {
 		return u, ErrNotFound
 	}
-	err := s.db.QueryRow(`SELECT id, name FROM users WHERE token_hash = ?`, hashToken(token)).Scan(&u.ID, &u.Name)
+	err := s.db.QueryRow(`SELECT id, name, token_saved FROM users WHERE token_hash = ?`,
+		hashToken(token)).Scan(&u.ID, &u.Name, &u.TokenSaved)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}
 	return u, err
+}
+
+// MarkTokenSaved records that someone has their token somewhere safe, which
+// stops the app reminding them about it.
+func (s *Store) MarkTokenSaved(id int64) error {
+	_, err := s.db.Exec(`UPDATE users SET token_saved = 1 WHERE id = ?`, id)
+	return err
 }
 
 func (s *Store) RenameUser(id int64, name string) error {

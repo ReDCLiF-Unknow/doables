@@ -104,6 +104,13 @@ class API:
     def __init__(self, base):
         self.base = base
 
+    def form(self, path, token):
+        """POST to one of the HTML endpoints, which answer with a redirect
+        rather than JSON."""
+        req = urllib.request.Request(self.base + path, data=b"", method="POST")
+        req.add_header("Authorization", "Bearer " + token)
+        urllib.request.urlopen(req).read()
+
     def __call__(self, path, body=None, token=None, method=None):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
@@ -123,6 +130,11 @@ def seed(api):
 
     people = {name: api("/api/users", {"name": name})["token"] for name in ("Alex", "Sam", "Rae")}
     alex, sam, rae = people["Alex"], people["Sam"], people["Rae"]
+
+    # These three have had these lists for a while, so they are past the
+    # "save your sign-in key" reminder a brand new account sees.
+    for token in people.values():
+        api.form("/me/token/saved", token)
 
     lists = {}
     for name in ("Weekend in Lisbon", "Flat move", "Reading"):
