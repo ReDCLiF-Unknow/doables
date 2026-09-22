@@ -119,8 +119,8 @@ jobs:
           Download the archive for your system below and unpack it, then run \`doables-server\`.
           \`doables\` beside it is the command-line client.
 
-          Nothing else is needed: the database is a single SQLite file created on first run, and
-          there is no runtime dependency to install. Databases from earlier versions are upgraded
+          Nothing else is needed: the database is a SQLite file created on first run, and there
+          is no runtime dependency to install. Databases from earlier versions are upgraded
           on start-up. \`checksums.txt\` holds the SHA-256 of each archive.
 
           ---

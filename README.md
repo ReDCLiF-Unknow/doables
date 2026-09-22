@@ -50,8 +50,8 @@ deliberately. `:main` is built from the development branch and is not promised t
 
 **A prebuilt binary** — download the archive for your system from the
 [latest release](https://github.com/ReDCLiF-Unknow/doables/releases/latest), unpack it, and run
-`doables-server`. There is nothing to install alongside it: the database is a single SQLite file
-created on first run.
+`doables-server`. There is nothing to install alongside it: the database is a SQLite file created
+on first run, with its write-ahead log beside it while the server is running.
 
 Either way, open <http://localhost:8080> and pick a name.
 
@@ -62,8 +62,10 @@ go run ./cmd/server            # http://localhost:8080, database in ./doables.db
 go run ./cmd/server -addr localhost:9000 -db /path/to/doables.db
 ```
 
-SQLite is provided by the pure-Go `modernc.org/sqlite`, so no C compiler is needed.
-Databases from earlier versions are upgraded automatically on start-up.
+SQLite is provided by the pure-Go `modernc.org/sqlite`, so no C compiler is needed. It runs in
+write-ahead logging mode, so reading carries on while somebody writes; back the database up with
+`sqlite3 doables.db ".backup out.db"` or while the server is stopped, rather than copying the file
+from under it. Databases from earlier versions are upgraded automatically on start-up.
 
 The stylesheets, scripts and fonts live in `internal/web/static/vendor/` and are compiled into
 the binary, so building needs nothing but Go. To change a version, edit the numbers at the top of

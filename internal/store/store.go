@@ -142,15 +142,24 @@ CREATE INDEX IF NOT EXISTS tasks_list_id ON tasks(list_id);
 
 // Open opens (creating or upgrading if needed) the SQLite database at path.
 func Open(path string) (*Store, error) {
-	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	// Write-ahead logging lets readers carry on while somebody writes, which
+	// matters here because every change makes each connected browser fetch its
+	// page again: with one shared connection those fetches queue behind each
+	// other and behind the write that caused them.
+	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	// SQLite allows a single writer; one connection keeps things simple and
-	// makes ":memory:" databases behave. Never issue a query while iterating
-	// another query's rows: it would wait forever for the only connection.
-	db.SetMaxOpenConns(1)
+	// SQLite still allows only one writer at a time; busy_timeout above makes
+	// the others wait their turn rather than fail. An in-memory database is
+	// private to its connection, so a second one would open an empty database:
+	// those stay on one.
+	conns := 8
+	if strings.Contains(path, ":memory:") || strings.Contains(path, "mode=memory") {
+		conns = 1
+	}
+	db.SetMaxOpenConns(conns)
 	s := &Store{db: db}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
