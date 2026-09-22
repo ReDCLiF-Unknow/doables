@@ -11,9 +11,12 @@
     // Apply the saved theme before first paint to avoid a flash.
     try { document.documentElement.setAttribute('data-bs-theme', localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')); } catch (e) {}
   </script>
-  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0/dist/css/tabler.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <!-- Everything is served from this server: no CDN sees who is using your
+       lists, and the app works on a network with no way out. Regenerate with
+       tools/vendor/fetch.py. -->
+  <link rel="stylesheet" href="/static/vendor/inter.css">
+  <link rel="stylesheet" href="/static/vendor/tabler.min.css">
+  <link rel="stylesheet" href="/static/vendor/tabler-icons.css">
   <style>
     :root { --tblr-font-sans-serif: 'Inter', system-ui, sans-serif; }
     body { font-feature-settings: "cv11", "ss01"; }

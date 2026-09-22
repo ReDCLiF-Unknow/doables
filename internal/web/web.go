@@ -158,7 +158,18 @@ func today() string { return time.Now().Format(dateLayout) }
 type userKey struct{}
 
 // ServeHTTP identifies the caller (cookie or bearer token) before routing.
+// csp keeps the page to its own origin. The inline scripts and styles need
+// 'unsafe-inline', so this does not stop injected script from running; what it
+// does stop is a page fetching or sending anything anywhere else, which is
+// what an injection would want to do. It is worth having only because there is
+// no longer a CDN to allow.
+const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; " +
+	"frame-ancestors 'none'; base-uri 'none'"
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy", csp)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if token := tokenFrom(r); token != "" {
 		if u, err := s.store.UserByToken(token); err == nil {
 			r = r.WithContext(context.WithValue(r.Context(), userKey{}, &u))

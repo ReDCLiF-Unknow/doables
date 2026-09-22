@@ -208,3 +208,28 @@ func TestAssigningFromThePage(t *testing.T) {
 	resp = e.form(carol, "/tasks/1/assign", url.Values{"user": {itoa(bobID)}})
 	want(t, "stranger assigns from a page", resp.StatusCode, 404)
 }
+
+// The web form caps a title at 200 characters and a description at 500. The
+// API and the CLI have to agree, or they become a way round the limit.
+func TestOverlongTasksAreRejected(t *testing.T) {
+	e := newEnv(t)
+	alice := e.register("Alice")
+	l := e.newList(alice, "Trip")
+	tasks := "/api/lists/" + itoa(l.ID) + "/tasks"
+
+	long := strings.Repeat("x", 201)
+	want(t, "overlong title", e.call("POST", tasks, alice, `{"title":"`+long+`"}`, nil), 400)
+	want(t, "overlong description", e.call("POST", tasks, alice,
+		`{"title":"Fine","description":"`+strings.Repeat("y", 501)+`"}`, nil), 400)
+
+	// The boundary itself is allowed, and counted in characters rather than
+	// bytes, so an accented title is not cut short.
+	want(t, "title at the limit", e.call("POST", tasks, alice,
+		`{"title":"`+strings.Repeat("x", 200)+`"}`, nil), 201)
+	want(t, "accented title at the limit", e.call("POST", tasks, alice,
+		`{"title":"`+strings.Repeat("é", 200)+`"}`, nil), 201)
+
+	// Editing is held to the same limit.
+	want(t, "edit to an overlong title", e.call("PATCH", "/api/tasks/1", alice, `{"title":"`+long+`"}`, nil), 400)
+	want(t, "edit to a sane title", e.call("PATCH", "/api/tasks/1", alice, `{"title":"Shorter"}`, nil), 200)
+}

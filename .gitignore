@@ -2,3 +2,4 @@ bin/
 *.db
 *.db-*
 *.log
+__pycache__/

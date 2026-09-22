@@ -22,7 +22,11 @@ var (
 const (
 	maxNameLen     = 40
 	maxListNameLen = 80
-	dateLayout     = "2006-01-02"
+	// The same limits the web form enforces, so the API and the CLI cannot
+	// smuggle in something the UI would never let you type.
+	maxTitleLen = 200
+	maxDescLen  = 500
+	dateLayout  = "2006-01-02"
 	// trashRetention is how long a deleted task stays restorable.
 	trashRetention = "-1 day"
 )
@@ -645,8 +649,8 @@ func (s *Store) DueCounts(userID int64, today string) (overdue, dueToday int, er
 }
 
 func (s *Store) AddTask(listID, userID int64, title, description, due string) (Task, error) {
-	title = strings.TrimSpace(title)
-	if title == "" {
+	title, description = strings.TrimSpace(title), strings.TrimSpace(description)
+	if !okLength(title, maxTitleLen) || !within(description, maxDescLen) {
 		return Task{}, ErrInvalid
 	}
 	dueVal, err := cleanDue(due)
@@ -654,7 +658,7 @@ func (s *Store) AddTask(listID, userID int64, title, description, due string) (T
 		return Task{}, err
 	}
 	res, err := s.db.Exec(`INSERT INTO tasks (list_id, title, description, added_by, due_date) VALUES (?, ?, ?, ?, ?)`,
-		listID, title, strings.TrimSpace(description), nullID(userID), dueVal)
+		listID, title, description, nullID(userID), dueVal)
 	if err != nil {
 		return Task{}, err
 	}
@@ -671,12 +675,14 @@ func (s *Store) UpdateTask(id int64, u TaskUpdate) (Task, error) {
 	}
 	title, desc := t.Title, t.Description
 	if u.Title != nil {
-		if title = strings.TrimSpace(*u.Title); title == "" {
+		if title = strings.TrimSpace(*u.Title); !okLength(title, maxTitleLen) {
 			return Task{}, ErrInvalid
 		}
 	}
 	if u.Description != nil {
-		desc = strings.TrimSpace(*u.Description)
+		if desc = strings.TrimSpace(*u.Description); !within(desc, maxDescLen) {
+			return Task{}, ErrInvalid
+		}
 	}
 	var dueVal any
 	if t.DueDate != "" {
@@ -791,6 +797,12 @@ func (s *Store) purgeTrash() error {
 	_, err := s.db.Exec(`DELETE FROM tasks WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, trashRetention)
 	return err
 }
+
+// okLength reports whether s is neither empty nor longer than max runes.
+func okLength(s string, max int) bool { return s != "" && within(s, max) }
+
+// within reports whether s is at most max runes; empty is allowed.
+func within(s string, max int) bool { return utf8.RuneCountInString(s) <= max }
 
 func (s *Store) affected(res sql.Result, err error) error {
 	if err != nil {

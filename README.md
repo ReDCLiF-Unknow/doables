@@ -5,8 +5,12 @@
 [![Downloads](https://img.shields.io/github/downloads/ReDCLiF-Unknow/doables/total)](https://github.com/ReDCLiF-Unknow/doables/releases)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-A small to-do list app you can share: Go, SQLite, `html/template`, and the [Tabler](https://tabler.io) UI + Tabler Icons (loaded from a CDN).
+A small to-do list app you can share: Go, SQLite, `html/template`, and the [Tabler](https://tabler.io) UI + Tabler Icons.
 Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
+
+One binary serves everything, including its own CSS, JavaScript and fonts, so a page load
+reaches nothing but your own server: no CDN learns who is using your lists, and the app works
+on a network with no way out.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/list-dark.png">
@@ -60,6 +64,11 @@ go run ./cmd/server -addr localhost:9000 -db /path/to/doables.db
 
 SQLite is provided by the pure-Go `modernc.org/sqlite`, so no C compiler is needed.
 Databases from earlier versions are upgraded automatically on start-up.
+
+The stylesheets, scripts and fonts live in `internal/web/static/vendor/` and are compiled into
+the binary, so building needs nothing but Go. To change a version, edit the numbers at the top of
+[tools/vendor/fetch.py](tools/vendor/fetch.py) and run it; it re-downloads them and cuts the icon
+font down to the icons the templates actually use (8KB rather than 844KB).
 
 ## Working with tasks
 
@@ -231,4 +240,7 @@ Nothing is tracked inside the app itself. A server you run never reports anythin
 
 It stands on other people's open source work: [Tabler](https://tabler.io) and
 [Resty](https://github.com/go-resty/resty) (MIT), [Cobra](https://github.com/spf13/cobra) (Apache 2.0),
-and [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3-Clause).
+and [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3-Clause). Tabler's CSS and icons and
+the [Inter](https://rsms.me/inter/) typeface (SIL Open Font License 1.1) are redistributed inside the
+binary; their licences sit beside them in
+[internal/web/static/vendor](internal/web/static/vendor).
