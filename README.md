@@ -186,7 +186,10 @@ go test ./...
 ```
 
 Every push and pull request runs the same tests on GitHub, along with `gofmt`, `go vet`,
-a cross-compile of each released platform, and a build of the Docker image.
+a cross-compile of each released platform, and a build of the Docker image. The CLI is
+tested the way it is used: each command runs against a real server and its output is read
+back. CI also starts the built container, uses it, and stops it, so the image is known to
+work rather than merely to compile.
 
 The screenshots above are generated rather than taken by hand, so they can be redone
 whenever the UI changes:

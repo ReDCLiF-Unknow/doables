@@ -20,6 +20,15 @@ type apiError struct {
 }
 
 func main() {
+	if err := newRoot().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+
+// newRoot builds the command tree. It is separate from main so that tests can
+// run commands against a test server and read what they print.
+func newRoot() *cobra.Command {
 	var server, token string
 	client := resty.New()
 
@@ -350,10 +359,7 @@ func main() {
 		setDone("undone", "Mark a task as not done", false),
 		rm)
 
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
+	return root
 }
 
 // printTasks writes a table of tasks. Inside one list the extra column says
