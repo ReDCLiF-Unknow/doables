@@ -139,14 +139,18 @@ type Server struct {
 	tmpl  *template.Template
 	mux   *http.ServeMux
 	hub   *hub
+	// signups limits how fast one address can create identities, the only
+	// thing a stranger can do here without having one already.
+	signups *limiter
 }
 
 func New(s *store.Store) *Server {
 	srv := &Server{
-		store: s,
-		tmpl:  template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
-		mux:   http.NewServeMux(),
-		hub:   newHub(),
+		store:   s,
+		tmpl:    template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
+		mux:     http.NewServeMux(),
+		hub:     newHub(),
+		signups: newLimiter(signupBurst, signupRefill),
 	}
 	s.SetNotifier(srv.hub.publish)
 	srv.routes()
@@ -193,7 +197,7 @@ func (s *Server) routes() {
 
 	// Sign-in and sharing
 	s.mux.HandleFunc("GET /welcome", s.welcomeGet)
-	s.mux.HandleFunc("POST /welcome", s.welcomePost)
+	s.mux.HandleFunc("POST /welcome", s.limited(s.welcomePost, s.tooManySignups))
 	s.mux.HandleFunc("POST /welcome/token", s.welcomeToken)
 	s.mux.HandleFunc("GET /join/{code}", s.joinGet)
 	s.mux.HandleFunc("POST /join/{code}", s.joinPost)
@@ -223,7 +227,9 @@ func (s *Server) routes() {
 
 	// JSON API (used by the CLI). Callers authenticate with
 	// "Authorization: Bearer <token>"; without one only public lists are visible.
-	s.mux.HandleFunc("POST /api/users", s.apiCreateUser)
+	s.mux.HandleFunc("POST /api/users", s.limited(s.apiCreateUser, func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusTooManyRequests, "too many new people from this address; wait a minute")
+	}))
 	s.mux.HandleFunc("GET /api/me", s.apiMe)
 	s.mux.HandleFunc("POST /api/join/{code}", s.apiJoin)
 	s.mux.HandleFunc("GET /api/mine", s.apiMine)
@@ -345,6 +351,12 @@ func (s *Server) welcomeGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderTmpl(w, http.StatusOK, "welcome.html", welcomePage(next, ""))
+}
+
+// tooManySignups turns the sign-up form down without losing the page.
+func (s *Server) tooManySignups(w http.ResponseWriter, r *http.Request) {
+	s.renderTmpl(w, http.StatusTooManyRequests, "welcome.html",
+		welcomePage(safeNext(r.FormValue("next")), "Too many new names from this connection. Try again in a minute."))
 }
 
 func (s *Server) welcomePost(w http.ResponseWriter, r *http.Request) {

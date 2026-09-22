@@ -87,7 +87,29 @@ jobs:
           fi
           curl -sf http://localhost:8080/manifest.webmanifest > /dev/null
           curl -sf http://localhost:8080/static/icon-192.png > /dev/null
+          curl -sf http://localhost:8080/static/vendor/tabler.min.css > /dev/null
           echo "the image starts and serves the app"
+
+          # It should also stop when asked. An event stream is a response that
+          # never ends, so it is what would hold a shutdown open until the
+          # runtime lost patience and killed the process.
+          token=$(curl -sf -X POST http://localhost:8080/api/users -d '{"name":"Watcher"}' | jq -r .token)
+          curl -sN -H "Authorization: Bearer $token" http://localhost:8080/events > /dev/null &
+          sleep 2
+          start=$(date +%s%N)
+          docker stop --time 30 doables-test > /dev/null
+          ms=$(( ($(date +%s%N) - start) / 1000000 ))
+          if [ "$ms" -ge 10000 ]; then
+            echo "::error::it took ${ms}ms to stop; the event stream is holding it open"
+            docker logs doables-test
+            exit 1
+          fi
+          docker logs doables-test 2>&1 | grep -q "^.*stopped$" || {
+            echo "::error::it was killed rather than shutting down cleanly"
+            docker logs doables-test
+            exit 1
+          }
+          echo "it shut down cleanly in ${ms}ms with an event stream still open"
           docker rm -f doables-test
 
       - name: Log in to ghcr.io
