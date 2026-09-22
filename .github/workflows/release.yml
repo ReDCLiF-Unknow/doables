@@ -49,6 +49,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+          fetch-tags: true # the release notes are the tag's own message
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -94,7 +96,17 @@ jobs:
         run: |
           set -euo pipefail
           image="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/doables"
-          cat > notes.md <<NOTES
+
+          # What is new comes from the tag's own message, so it is written once,
+          # where the tag is made. printf rather than a heredoc: the message is
+          # prose and may contain backticks, which a heredoc would try to run.
+          : > notes.md
+          whats_new=$(git for-each-ref "refs/tags/$VERSION" --format='%(contents)')
+          if [ -n "$whats_new" ]; then
+            printf '%s\n\n---\n\n' "$whats_new" >> notes.md
+          fi
+
+          cat >> notes.md <<NOTES
           Two ways to run it. Either way, open <http://localhost:8080> and pick a display name.
 
           ### Docker
