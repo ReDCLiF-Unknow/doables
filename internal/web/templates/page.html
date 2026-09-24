@@ -238,19 +238,20 @@
         <!-- Stats -->
         <div class="row row-cards mb-3" data-live="stats">
           <div class="col-6 col-md-3">
-            <div class="card card-sm"><div class="card-body"><div class="row align-items-center">
+            <div class="card card-sm h-100"><div class="card-body d-flex align-items-center"><div class="row align-items-center flex-fill">
               <div class="col-auto"><span class="stat-icon bg-blue-lt text-blue rounded d-flex align-items-center justify-content-center"><i class="ti ti-clock fs-2"></i></span></div>
               <div class="col"><div class="fw-bold fs-3">{{.Open}}</div><div class="text-secondary">Open</div></div>
             </div></div></div>
           </div>
           <div class="col-6 col-md-3">
-            <div class="card card-sm"><div class="card-body"><div class="row align-items-center">
+            <div class="card card-sm h-100"><div class="card-body d-flex align-items-center"><div class="row align-items-center flex-fill">
               <div class="col-auto"><span class="stat-icon bg-green-lt text-green rounded d-flex align-items-center justify-content-center"><i class="ti ti-check fs-2"></i></span></div>
               <div class="col"><div class="fw-bold fs-3">{{.Done}}</div><div class="text-secondary">Done</div></div>
             </div></div></div>
           </div>
           <div class="col-12 col-md-6">
-            <div class="card card-sm"><div class="card-body">
+            <!-- h-100 on all three: cards in a row share its height whatever their contents -->
+            <div class="card card-sm h-100"><div class="card-body d-flex flex-column justify-content-center">
               <div class="d-flex mb-2"><div class="fw-medium">Progress</div><div class="ms-auto fw-bold">{{.Percent}}%</div></div>
               <div class="progress progress-lg"><div class="progress-bar bg-green" style="width: {{.Percent}}%" role="progressbar" aria-valuenow="{{.Percent}}" aria-valuemin="0" aria-valuemax="100"></div></div>
               <div class="text-secondary small mt-2">{{.Done}} of {{.Total}} tasks completed</div>
