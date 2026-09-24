@@ -53,8 +53,20 @@
     .navbar-vertical .navbar-collapse > .navbar-nav { flex: 0 0 auto !important; }
     /* The "+" beside the Lists heading */
     .sidebar-add { color: var(--tblr-secondary); border: 0; background: transparent; }
-    .sidebar-add:hover, .sidebar-add.active { color: #fff; background: rgba(255, 255, 255, .1); }
-    .sidebar-user { border-top: 1px solid var(--tblr-border-color-translucent, rgba(255,255,255,.1)); }
+    .sidebar-add:hover, .sidebar-add.active {
+      color: var(--tblr-body-color); background: color-mix(in srgb, var(--tblr-body-color) 10%, transparent); }
+    .sidebar-user { border-top: 1px solid var(--tblr-border-color); }
+    /* The sidebar follows the page theme. Tabler's navbar colours are fixed
+       light-theme greys (#49566c), which on a dark sidebar are barely readable,
+       so derive them from the theme's own text colour instead. Everything in
+       the sidebar inherits these: links, the current page, your name. */
+    .navbar.navbar-vertical {
+      --tblr-navbar-color: color-mix(in srgb, var(--tblr-body-color) 72%, transparent);
+      --tblr-navbar-hover-color: var(--tblr-body-color);
+      --tblr-navbar-active-color: var(--tblr-body-color);
+      color: var(--tblr-navbar-color);
+    }
+    .navbar-vertical .navbar-nav .nav-link.active { font-weight: 600; }
 
     /* Inline editing: [data-edit-scope] toggles between its view and its form */
     [data-edit-scope] [data-edit-form] { display: none; }
