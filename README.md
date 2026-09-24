@@ -81,6 +81,10 @@ font down to the icons the templates actually use (8KB rather than 844KB).
   frees whatever was theirs. **My tasks** in the sidebar gathers everything assigned to you across all
   your lists, with a count beside it; finishing something takes it off that list without forgetting
   who did it.
+- **Talk about a task.** The speech bubble on a task opens its comments: who said what, and when. Unlike
+  the description, which anyone can overwrite, comments only add up; you can delete your own, nobody else's.
+  A task shows how many it has everywhere, and the conversation itself on the list's page. New comments
+  appear as they are written, and a half-typed one is never lost to someone else's change.
 - **Due dates.** Optional on every task. Tasks show a badge ("Today", "Tomorrow", red "Overdue · Sep 17"), and
   open tasks sort soonest-due first.
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
@@ -150,6 +154,10 @@ doables rm 1          # delete task
 doables rm-list 1     # delete list and its tasks (owner only)
 doables restore-list 1   # undo that, within a day
 
+doables comment 3 "Friday, 7pm?"   # say something about task 3
+doables comments 3                 # read the conversation
+doables rm-comment 12              # delete one of your own
+
 doables invite 1                       # print the invite link for a list
 doables join http://host:8080/join/CODE   # join a list (link or bare code)
 doables members 1
@@ -182,6 +190,9 @@ Dates are `YYYY-MM-DD`.
 | POST | `/api/lists/{id}/tasks` | `{"title": "...", "description": "...", "due_date": "..."}` |
 | PATCH | `/api/tasks/{id}` | any of `{"done": true, "title": "...", "description": "...", "due_date": "...", "assignee_id": 2}`; `"due_date": ""` clears the date and `"assignee_id": 0` clears the assignee |
 | DELETE | `/api/tasks/{id}` | moves the task to the trash |
+| GET | `/api/tasks/{id}/comments` | oldest first |
+| POST | `/api/tasks/{id}/comments` | `{"body": "..."}`, up to 500 characters; needs a token |
+| DELETE | `/api/comments/{id}` | your own only |
 
 ## Tests
 

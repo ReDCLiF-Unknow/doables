@@ -155,7 +155,9 @@ def seed(api):
     # Alex is 1, Sam is 2, Rae is 3: the order they were created in above.
     trip_id = trip["id"]
     task(trip_id, alex, "Sort out the airport transfer", "Seven of us, two bags each", day(-1), 1)
-    task(trip_id, sam, "Book the ferry to Cacilhas", "Friday evening, before sunset", day(0), 2)
+    ferry = task(trip_id, sam, "Book the ferry to Cacilhas", "Friday evening, before sunset", day(0), 2)
+    api(f"/api/tasks/{ferry['id']}/comments", {"body": "Is the 7pm one still running in September?"}, rae)
+    api(f"/api/tasks/{ferry['id']}/comments", {"body": "Checked: last one is 21:30"}, sam)
     task(trip_id, alex, "Find somewhere for dinner on Friday", "Somewhere near the water", day(1), 3)
     task(trip_id, rae, "Renew the travel card", "", day(4), 3)
     task(trip_id, alex, "Pack the camera", "And the spare battery", "", 1)

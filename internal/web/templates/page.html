@@ -512,9 +512,18 @@
   // sends a fresh copy of the page. Regions being edited are left alone.
   var pending = false;
 
+  // The comment box of the thread the cursor is in, if any.
+  function commentBox(el) {
+    return el && el.name === 'body' && el.closest && el.closest('details[data-thread]') ? el : null;
+  }
+
   function isEditing(el) {
     var a = document.activeElement;
-    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return true;
+    // An empty comment box with the cursor in it holds nothing to lose, and
+    // after posting that is exactly where the cursor rests: treating it as
+    // busy would stop replies appearing until you clicked somewhere else.
+    var idleBox = commentBox(a) && a.value === '';
+    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && !idleBox) return true;
     if (el.querySelector('.dropdown-menu.show')) return true; // a menu is open: don't yank it away
     return !!el.querySelector('.is-editing');
   }
@@ -522,12 +531,39 @@
   function apply(html) {
     var doc = new DOMParser().parseFromString(html, 'text/html');
     if (doc.title) document.title = doc.title;
+    // Threads people have open stay open when the page around them is
+    // refreshed, which happens whenever anyone changes anything.
+    var open = {};
+    document.querySelectorAll('details[data-thread][open]').forEach(function (d) {
+      open[d.getAttribute('data-thread')] = true;
+    });
+    // ...and the cursor goes back into the comment box it was in.
+    var box = commentBox(document.activeElement);
+    var boxThread = box ? box.closest('details[data-thread]').getAttribute('data-thread') : null;
+    // Half-written comments survive too. A focused box with text in it already
+    // holds its region back, but one you have clicked away from does not, and
+    // someone else ticking a task would otherwise throw your words away.
+    var drafts = {};
+    document.querySelectorAll('details[data-thread] input[name=body]').forEach(function (b) {
+      if (b.value !== '') drafts[b.closest('details[data-thread]').getAttribute('data-thread')] = b.value;
+    });
     document.querySelectorAll('[data-live]').forEach(function (cur) {
       var fresh = doc.querySelector('[data-live="' + cur.getAttribute('data-live') + '"]');
       if (!fresh || fresh.innerHTML === cur.innerHTML) return;
       if (isEditing(cur)) { pending = true; return; }
       cur.innerHTML = fresh.innerHTML;
     });
+    document.querySelectorAll('details[data-thread]').forEach(function (d) {
+      if (open[d.getAttribute('data-thread')]) d.open = true;
+    });
+    Object.keys(drafts).forEach(function (id) {
+      var b = document.querySelector('details[data-thread="' + id + '"] input[name=body]');
+      if (b && b.value === '') b.value = drafts[id];
+    });
+    if (boxThread) {
+      var again = document.querySelector('details[data-thread="' + boxThread + '"] input[name=body]');
+      if (again && document.activeElement !== again) again.focus();
+    }
   }
 
   function flushPending() {
@@ -633,7 +669,14 @@
         if (first) first.focus(); // keep the keyboard up for adding several tasks in a row
       }
       pending = false;
+      var refocus = form.getAttribute('data-refocus');
+      // What was just posted is no longer a draft, so it must not be kept as one.
+      if (refocus) form.querySelector('input[name=body]').value = '';
       apply(html);
+      if (refocus) {
+        var box = document.querySelector('details[data-thread="' + refocus + '"] input[name=body]');
+        if (box) box.focus();
+      }
       if (form.dataset.toast) toast(form.dataset.toast, null, 3000);
       if (undoID) toast('Task deleted', { label: 'Undo', run: function () { restore(undoID); } }, 8000);
     }).catch(function () { toast('Something went wrong. Please try again.'); });
@@ -649,6 +692,15 @@
 
   // ---- inline editing ----
   document.addEventListener('click', function (e) {
+    var talk = e.target.closest('[data-open-thread]');
+    if (talk) {
+      var thread = document.querySelector('details[data-thread="' + talk.getAttribute('data-open-thread') + '"]');
+      if (thread) {
+        thread.open = !thread.open;
+        if (thread.open) thread.querySelector('input[name=body]').focus();
+      }
+      return;
+    }
     var toggle = e.target.closest('[data-edit-toggle]');
     if (toggle) {
       var scope = toggle.closest('[data-edit-scope]');

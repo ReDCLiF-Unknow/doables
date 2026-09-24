@@ -225,6 +225,59 @@ func newRoot() *cobra.Command {
 			return nil
 		}}
 
+	// comments
+	comment := &cobra.Command{Use: "comment TASK_ID TEXT", Short: "Say something about a task", Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			var c store.Comment
+			if err := check(client.R().SetBody(map[string]string{"body": args[1]}).SetResult(&c).Post("/api/tasks/" + id + "/comments")); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Commented on task %d (comment %d)\n", c.TaskID, c.ID)
+			return nil
+		}}
+
+	comments := &cobra.Command{Use: "comments TASK_ID", Short: "Read what people have said about a task", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			var cs []store.Comment
+			if err := check(client.R().SetResult(&cs).Get("/api/tasks/" + id + "/comments")); err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			if len(cs) == 0 {
+				fmt.Fprintln(out, "No comments yet.")
+				return nil
+			}
+			for _, c := range cs {
+				who := c.Author
+				if who == "" {
+					who = "someone who has left"
+				}
+				fmt.Fprintf(out, "#%d  %s, %s\n    %s\n", c.ID, who, c.CreatedAt.Local().Format("2006-01-02 15:04"), c.Body)
+			}
+			return nil
+		}}
+
+	rmComment := &cobra.Command{Use: "rm-comment COMMENT_ID", Short: "Delete one of your own comments", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			if err := check(client.R().Delete("/api/comments/" + id)); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted comment %s\n", id)
+			return nil
+		}}
+
 	renameList := &cobra.Command{Use: "rename-list LIST_ID NAME", Short: "Rename a list", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -353,7 +406,7 @@ func newRoot() *cobra.Command {
 
 	root.AddCommand(register, whoami, invite, join, members)
 	root.AddCommand(edit, renameList, assign, mine)
-	root.AddCommand(restoreList)
+	root.AddCommand(restoreList, comment, comments, rmComment)
 	root.AddCommand(lists, newList, rmList, tasks, add,
 		setDone("done", "Mark a task as done", true),
 		setDone("undone", "Mark a task as not done", false),

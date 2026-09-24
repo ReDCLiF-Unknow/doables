@@ -199,3 +199,38 @@ func TestCLIComplainsClearly(t *testing.T) {
 		t.Errorf("invite for a missing list said %q", err)
 	}
 }
+
+func TestCLITalksAboutTasks(t *testing.T) {
+	c := newCLI(t)
+	alex := c.signIn("Alex")
+	c.run("new-list", "Weekend")
+	c.run("add", "1", "Book the ferry")
+	link := strings.TrimSpace(c.run("invite", "1"))
+	sam := c.signIn("Sam")
+	c.run("join", link)
+
+	contains(t, "no comments yet", c.run("comments", "1"), "No comments yet.")
+	contains(t, "comment", c.run("comment", "1", "Friday, 7pm?"), "Commented on task 1")
+	c.token = alex
+	c.run("comment", "1", "Works for me")
+
+	out := c.run("comments", "1")
+	contains(t, "the thread", out, "Sam")
+	contains(t, "the thread", out, "Friday, 7pm?")
+	contains(t, "the thread", out, "Works for me")
+	if strings.Index(out, "Friday, 7pm?") > strings.Index(out, "Works for me") {
+		t.Errorf("comments are out of order:\n%s", out)
+	}
+
+	// Alex cannot delete what Sam said, and is told why.
+	if out, err := c.try("rm-comment", "1"); err == nil {
+		t.Errorf("Alex deleted Sam's comment:\n%s", out)
+	} else if !strings.Contains(err.Error(), "403") {
+		t.Errorf("deleting someone else's comment said %q, want a 403", err)
+	}
+	c.token = sam
+	contains(t, "rm-comment", c.run("rm-comment", "1"), "Deleted comment 1")
+	if strings.Contains(c.run("comments", "1"), "Friday, 7pm?") {
+		t.Error("a deleted comment is still listed")
+	}
+}

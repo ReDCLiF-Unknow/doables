@@ -68,6 +68,25 @@
     }
     .navbar-vertical .navbar-nav .nav-link.active { font-weight: 600; }
 
+    /* A task's comments: folded away until you open them */
+    .task-thread summary { display: inline-flex; align-items: center; list-style: none; cursor: pointer;
+                           color: var(--tblr-secondary); margin-top: .15rem; }
+    .task-thread summary::-webkit-details-marker { display: none; }
+    /* With nothing said yet, the thread stays out of sight until opened */
+    .task-thread.thread-empty:not([open]) { display: none; }
+    .task-thread-col:has(> .thread-empty:not([open])) { display: none; }
+    /* Line the thread up under the title: past the tick box and the gutters */
+    .row > .task-thread-col { margin-top: .1rem; padding-left: calc(1.35rem + 1.5rem); }
+    .comment .avatar { flex-shrink: 0; }
+    .thread-body form .btn-icon { align-self: stretch; height: auto; aspect-ratio: 1; }
+    .task-thread summary:hover, .task-thread[open] summary { color: var(--tblr-body-color); }
+    .thread-body { margin-top: .5rem; padding-left: .75rem; border-left: 2px solid var(--tblr-border-color); max-width: 42rem; }
+    .comment { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .6rem; }
+    .comment-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .comment .comment-delete { opacity: 0; transition: opacity .15s; }
+    .comment:hover .comment-delete, .comment:focus-within .comment-delete { opacity: 1; }
+    @media (hover: none) { .comment .comment-delete { opacity: 1; } }
+
     /* Inline editing: [data-edit-scope] toggles between its view and its form */
     [data-edit-scope] [data-edit-form] { display: none; }
     [data-edit-scope].is-editing [data-edit-form] { display: block; }
@@ -115,6 +134,8 @@
       .card-header-pills .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
       .navbar-toggler { min-width: 44px; min-height: 44px; }
       .form-check-input.task-check { width: 1.6rem; height: 1.6rem; }
+      .row > .task-thread-col { padding-left: calc(1.6rem + 1.5rem); }
+      .thread-body { padding-left: .5rem; }
       .dropdown-item { padding: .75rem 1rem; }
       /* quick-add: just the title and a button; description and date sit behind the details toggle */
       #add-task-form .add-extra { display: none; }
@@ -143,6 +164,9 @@
         {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
         {{else if .AddedBy}}<div class="text-secondary small"><i class="ti ti-user me-1"></i>Added by {{.AddedBy}}</div>{{end}}
       {{end}}
+      {{if and (not $.ShowThread) .Comments}}
+      <div class="small text-secondary"><i class="ti ti-message me-1"></i>{{plural .Comments "comment"}}</div>
+      {{end}}
     </div>
     {{if .DueDate}}
     <div class="col-auto d-none d-sm-block">
@@ -150,6 +174,9 @@
     </div>
     {{end}}
     <div class="col-auto task-actions d-flex gap-1">
+      {{if $.ShowThread}}
+      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-open-thread="{{.ID}}" title="Comment" aria-label="Comment on this task"><i class="ti ti-message"></i></button>
+      {{end}}
       {{if $.Members}}
       <div class="dropdown">
         <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-bs-toggle="dropdown" aria-expanded="false"
@@ -180,6 +207,40 @@
         <button type="submit" class="btn btn-icon btn-sm btn-ghost-danger" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>
       </form>
     </div>
+    {{if $.ShowThread}}
+    <!-- The conversation gets a line of its own under the task, so on a phone
+         it has the whole width, and the tick box and date stay beside the title. -->
+    <div class="col-12 task-thread-col">
+        <details class="task-thread{{if not .Comments}} thread-empty{{end}}" data-thread="{{.ID}}">
+          <summary class="small"><i class="ti ti-message me-1"></i>{{if .Comments}}{{plural .Comments "comment"}}{{else}}Comment{{end}}</summary>
+          <div class="thread-body">
+            {{range $.Thread}}
+            <div class="comment">
+              <span class="avatar avatar-xs rounded-circle bg-{{color .AuthorID}}-lt">{{if .Author}}{{initial .Author}}{{else}}?{{end}}</span>
+              <div class="flex-fill" style="min-width:0">
+                <div class="small">
+                  <strong>{{if eq .AuthorID $.Me}}You{{else if .Author}}{{.Author}}{{else}}Someone who has left{{end}}</strong>
+                  <span class="text-secondary ms-1" title="{{.CreatedAt.Format "2006-01-02 15:04"}} UTC">{{when .CreatedAt}}</span>
+                </div>
+                <div class="comment-body">{{.Body}}</div>
+              </div>
+              {{if eq .AuthorID $.Me}}
+              <form method="post" action="/comments/{{.ID}}/delete" data-inplace class="comment-delete">
+                <input type="hidden" name="next" value="{{$.Path}}">
+                <button type="submit" class="btn btn-icon btn-sm btn-ghost-secondary" title="Delete your comment" aria-label="Delete your comment"><i class="ti ti-x"></i></button>
+              </form>
+              {{end}}
+            </div>
+            {{end}}
+            <form method="post" action="/tasks/{{.ID}}/comments" data-inplace data-refocus="{{.ID}}" class="d-flex gap-2 mt-1">
+              <input type="hidden" name="next" value="{{$.Path}}">
+              <input type="text" name="body" class="form-control form-control-sm" placeholder="Write a comment" required maxlength="500" aria-label="Comment on {{.Title}}" autocomplete="off">
+              <button type="submit" class="btn btn-sm btn-primary btn-icon" title="Post" aria-label="Post comment"><i class="ti ti-send"></i></button>
+            </form>
+          </div>
+        </details>
+    </div>
+    {{end}}
   </div>
 
   <form method="post" action="/tasks/{{.ID}}/edit" data-inplace data-edit-form>
