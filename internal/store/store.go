@@ -124,6 +124,9 @@ CREATE TABLE IF NOT EXISTS list_members (
 	joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (list_id, user_id)
 );
+-- The primary key serves "who is on this list"; every page load also asks
+-- "which lists is this person on", which it cannot help with.
+CREATE INDEX IF NOT EXISTS list_members_user_id ON list_members(user_id);
 CREATE TABLE IF NOT EXISTS tasks (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
@@ -173,6 +176,19 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// tx runs fn in a transaction: all of its writes happen, or none do.
+func (s *Store) tx(fn func(*sql.Tx) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
 
 // SetNotifier registers a callback fired after every change. It receives the
 // users who can see the changed list, or all=true when the list is public.
@@ -476,16 +492,23 @@ func (s *Store) CreateList(name string, ownerID int64) (List, error) {
 	if err != nil {
 		return List{}, err
 	}
-	res, err := s.db.Exec(`INSERT INTO lists (name, owner_id, invite_code) VALUES (?, ?, ?)`,
-		name, nullID(ownerID), newInviteCode())
+	// The list and its owner's membership go in together: an owned list with
+	// no members is invisible to everyone, its owner included.
+	var id int64
+	err = s.tx(func(tx *sql.Tx) error {
+		res, err := tx.Exec(`INSERT INTO lists (name, owner_id, invite_code) VALUES (?, ?, ?)`,
+			name, nullID(ownerID), newInviteCode())
+		if err != nil {
+			return err
+		}
+		id, _ = res.LastInsertId()
+		if ownerID != 0 {
+			_, err = tx.Exec(`INSERT OR IGNORE INTO list_members (list_id, user_id) VALUES (?, ?)`, id, ownerID)
+		}
+		return err
+	})
 	if err != nil {
 		return List{}, err
-	}
-	id, _ := res.LastInsertId()
-	if ownerID != 0 {
-		if err := s.AddMember(id, ownerID); err != nil {
-			return List{}, err
-		}
 	}
 	s.changed(id)
 	return s.firstList(`WHERE l.id = ?`, id)
@@ -543,10 +566,16 @@ func (s *Store) RestoreList(id, userID int64) (List, error) {
 
 // ClaimList makes userID the owner of a public list, making it private.
 func (s *Store) ClaimList(listID, userID int64) error {
-	if err := s.affected(s.db.Exec(`UPDATE lists SET owner_id = ? WHERE id = ? AND owner_id IS NULL`, userID, listID)); err != nil {
+	// Owning it and belonging to it happen together, for the same reason as
+	// in CreateList.
+	err := s.tx(func(tx *sql.Tx) error {
+		if err := s.affected(tx.Exec(`UPDATE lists SET owner_id = ? WHERE id = ? AND owner_id IS NULL`, userID, listID)); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT OR IGNORE INTO list_members (list_id, user_id) VALUES (?, ?)`, listID, userID)
 		return err
-	}
-	if err := s.AddMember(listID, userID); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 	s.publish(nil, true) // everyone who could see it as public must re-check
@@ -577,12 +606,16 @@ func (s *Store) AddMember(listID, userID int64) error {
 // Anything that was assigned to them goes back to being nobody's job, since
 // they can no longer see it.
 func (s *Store) RemoveMember(listID, userID int64) error {
-	if err := s.affected(s.db.Exec(`
-		DELETE FROM list_members WHERE list_id = ? AND user_id = ?
-		AND user_id != (SELECT COALESCE(owner_id, 0) FROM lists WHERE id = ?)`, listID, userID, listID)); err != nil {
+	err := s.tx(func(tx *sql.Tx) error {
+		if err := s.affected(tx.Exec(`
+			DELETE FROM list_members WHERE list_id = ? AND user_id = ?
+			AND user_id != (SELECT COALESCE(owner_id, 0) FROM lists WHERE id = ?)`, listID, userID, listID)); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE tasks SET assigned_to = NULL WHERE list_id = ? AND assigned_to = ?`, listID, userID)
 		return err
-	}
-	if _, err := s.db.Exec(`UPDATE tasks SET assigned_to = NULL WHERE list_id = ? AND assigned_to = ?`, listID, userID); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 	s.changed(listID, userID)
