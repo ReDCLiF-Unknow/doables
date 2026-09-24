@@ -60,6 +60,9 @@ func TestAVisitorGetsSomethingToPlayWith(t *testing.T) {
 		t.Errorf("the trip has %d tasks, %d done, %d with comments, %d the visitor's; want 6, 1, 1, 2",
 			len(tasks), done, withComments, theirs)
 	}
+	if got := store.CountTags(tasks); len(got) != 3 {
+		t.Errorf("the trip uses the tags %+v; want three, so filtering by one shows something", got)
+	}
 	if mine, _ := s.AssignedTasks(me.ID); len(mine) == 0 {
 		t.Error("My tasks is empty, so it shows nothing in a demo")
 	}

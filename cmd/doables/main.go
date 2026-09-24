@@ -118,18 +118,25 @@ func newRoot() *cobra.Command {
 		}}
 
 	// tasks
+	var tag string
 	tasks := &cobra.Command{Use: "tasks LIST_ID", Short: "Show the tasks in a list", Args: cobra.ExactArgs(1),
+		Example: "  doables tasks 3\n  doables tasks 3 --tag shopping",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
 			if err != nil {
 				return err
 			}
+			req := client.R()
+			if tag != "" {
+				req.SetQueryParam("tag", tag)
+			}
 			var ts []store.Task
-			if err := check(client.R().SetResult(&ts).Get("/api/lists/" + id + "/tasks")); err != nil {
+			if err := check(req.SetResult(&ts).Get("/api/lists/" + id + "/tasks")); err != nil {
 				return err
 			}
 			return printTasks(cmd, ts, false)
 		}}
+	tasks.Flags().StringVar(&tag, "tag", "", "only the tasks tagged with this #tag (the # is optional)")
 
 	mine := &cobra.Command{Use: "mine", Short: "Show the open tasks assigned to you", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

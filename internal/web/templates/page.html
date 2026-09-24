@@ -274,12 +274,13 @@
           <div class="card-body">
             <form method="post" action="/lists/{{.ID}}/tasks" id="add-task-form" data-inplace data-reset>
               <input type="hidden" name="next" value="{{$.Path}}">
+              {{if $.Tag}}<input type="hidden" name="tag" value="{{$.Tag}}">{{end}}
               <!-- On phones this is one line (title, details toggle, add); description and date appear under the toggle -->
               <div class="row g-2">
                 <div class="col col-md-4 order-1">
                   <div class="input-icon">
                     <span class="input-icon-addon"><i class="ti ti-pencil"></i></span>
-                    <input type="text" name="title" class="form-control" placeholder="What needs doing?" required maxlength="200" autocomplete="off">
+                    <input type="text" name="title" class="form-control" placeholder="{{if $.Tag}}New #{{$.Tag}} task{{else}}What needs doing?{{end}}" required maxlength="200" autocomplete="off">
                   </div>
                 </div>
                 <div class="col-auto d-md-none order-2">
@@ -306,19 +307,33 @@
         <div class="card" data-live="tasks">
           <div class="card-header">
             <ul class="nav nav-pills card-header-pills">
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "all"}} active{{end}}" href="/lists/{{.ID}}">All <span class="badge bg-secondary-lt ms-1">{{.Total}}</span></a></li>
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "open"}} active{{end}}" href="/lists/{{.ID}}?filter=open">Open <span class="badge bg-secondary-lt ms-1">{{.Open}}</span></a></li>
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "done"}} active{{end}}" href="/lists/{{.ID}}?filter=done">Done <span class="badge bg-secondary-lt ms-1">{{.Done}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "all"}} active{{end}}" href="{{listURL .ID $.Tag "all"}}">All <span class="badge bg-secondary-lt ms-1">{{$.Count.All}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "open"}} active{{end}}" href="{{listURL .ID $.Tag "open"}}">Open <span class="badge bg-secondary-lt ms-1">{{$.Count.Open}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "done"}} active{{end}}" href="{{listURL .ID $.Tag "done"}}">Done <span class="badge bg-secondary-lt ms-1">{{$.Count.Done}}</span></a></li>
             </ul>
           </div>
+          {{if $.TagCounts}}
+          <!-- Every #tag in the list. Clicking one shows only its tasks; clicking it again shows them all. -->
+          <div class="card-body py-2 border-bottom d-flex flex-wrap align-items-center gap-2 tag-bar">
+            {{$list := .ID}}
+            {{range $.TagCounts}}
+            <a class="hashtag{{if eq .Tag $.Tag}} active{{end}}" href="{{tagURL $list .Tag $.Tag $.Filter}}"
+               title="{{if eq .Tag $.Tag}}Show every task again{{else}}Show only tasks tagged #{{.Tag}}{{end}}">#{{.Tag}}<span class="tag-count">{{.Tasks}}</span>{{if eq .Tag $.Tag}}<i class="ti ti-x ms-1"></i>{{end}}</a>
+            {{end}}
+          </div>
+          {{end}}
           <div class="list-group list-group-flush">
             {{range $.Tasks}}{{template "taskrow" (row $ .)}}
             {{else}}
             <div class="empty">
-              {{if eq $.Filter "all"}}
+              {{if and $.Tag (not $.Count.All)}}
+              <div class="empty-icon"><i class="ti ti-hash fs-1"></i></div>
+              <p class="empty-title">Nothing tagged #{{$.Tag}}</p>
+              <p class="empty-subtitle text-secondary">No task here mentions it any more. <a href="{{listURL .ID "" $.Filter}}">Show every task</a></p>
+              {{else if eq $.Filter "all"}}
               <div class="empty-icon"><i class="ti ti-mood-smile fs-1"></i></div>
               <p class="empty-title">Nothing here yet</p>
-              <p class="empty-subtitle text-secondary">Add your first task above.</p>
+              <p class="empty-subtitle text-secondary">Add your first task above. Words starting with # become tags, like <span class="hashtag">#shopping</span>, so you can show just those tasks.</p>
               {{else if eq $.Filter "open"}}
               <div class="empty-icon"><i class="ti ti-confetti fs-1"></i></div>
               <p class="empty-title">All caught up!</p>

@@ -96,6 +96,17 @@
     .comment:hover .comment-delete, .comment:focus-within .comment-delete { opacity: 1; }
     @media (hover: none) { .comment .comment-delete { opacity: 1; } }
 
+    /* #tags: links inside titles and descriptions, and the row of them above a list */
+    .hashtag { display: inline-block; padding: 0 .4rem; border-radius: 999px; font-size: .85em; font-weight: 500;
+           line-height: 1.55; color: var(--tblr-primary); text-decoration: none; white-space: nowrap;
+           background: color-mix(in srgb, var(--tblr-primary) 12%, transparent); }
+    .hashtag:hover { color: var(--tblr-primary); text-decoration: none;
+                 background: color-mix(in srgb, var(--tblr-primary) 22%, transparent); }
+    .hashtag.active, .hashtag.active:hover { color: #fff; background: var(--tblr-primary); }
+    .task-done .hashtag { opacity: .65; }
+    .tag-bar .hashtag { font-size: .8rem; padding: .15rem .55rem; }
+    .tag-bar .tag-count { opacity: .7; margin-left: .2rem; }
+
     /* Inline editing: [data-edit-scope] toggles between its view and its form */
     [data-edit-scope] [data-edit-form] { display: none; }
     [data-edit-scope].is-editing [data-edit-form] { display: block; }
@@ -146,6 +157,7 @@
       .row > .task-thread-col { padding-left: calc(1.6rem + 1.5rem); }
       .thread-body { padding-left: .5rem; }
       .dropdown-item { padding: .75rem 1rem; }
+      .tag-bar .hashtag { padding: .45rem .75rem; }
       /* quick-add: just the title and a button; description and date sit behind the details toggle */
       #add-task-form .add-extra { display: none; }
       #add-task-form.show-details .add-extra { display: block; }
@@ -164,8 +176,8 @@
       </form>
     </div>
     <div class="col">
-      <div class="task-title fw-medium">{{.Title}}</div>
-      {{if .Description}}<div class="task-desc text-secondary small">{{.Description}}</div>{{end}}
+      <div class="task-title fw-medium">{{tagged .Title $}}</div>
+      {{if .Description}}<div class="task-desc text-secondary small">{{tagged .Description $}}</div>{{end}}
       {{if .DueDate}}<div class="d-sm-none mt-1"><span class="badge {{dueClass .DueDate $.Today .Done}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today .Done}}</span></div>{{end}}
       {{if $.ShowList}}<a class="small text-secondary text-decoration-none" href="/lists/{{.ListID}}"><i class="ti ti-list-check me-1"></i>{{.ListName}}</a>{{end}}
       {{if .AssigneeID}}<div class="small{{if eq .AssigneeID $.Me}} text-blue fw-medium{{else}} text-secondary{{end}}"><i class="ti ti-user-pin me-1"></i>{{if eq .AssigneeID $.Me}}Yours{{else}}{{.Assignee}}'s job{{end}}</div>{{end}}

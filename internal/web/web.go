@@ -5,12 +5,14 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -82,8 +84,60 @@ var funcs = template.FuncMap{
 		return taskRow{Task: t, Today: p.Today, Path: p.Path, ShowList: p.View != "list",
 			ShowWho: p.Current != nil && p.Current.Members > 1,
 			Me:      p.User.ID, Members: p.Members,
-			ShowThread: p.View == "list", Thread: p.Threads[t.ID]}
+			ShowThread: p.View == "list", Thread: p.Threads[t.ID],
+			Tag: p.Tag, Filter: p.Filter}
 	},
+	// tagged shows a task's title or description with its #tags as links.
+	"tagged": tagged,
+	// listURL and tagURL are the addresses of a list shown a particular way.
+	"listURL": listURL,
+	"tagURL":  tagURL,
+}
+
+// listURL is the address of a list showing only the tasks with tag (none when
+// it is empty) that are open, done or either ("all").
+func listURL(listID int64, tag, filter string) string {
+	q := url.Values{}
+	if tag != "" {
+		q.Set("tag", tag)
+	}
+	if filter == "open" || filter == "done" {
+		q.Set("filter", filter)
+	}
+	if len(q) == 0 {
+		return listPath(listID)
+	}
+	return listPath(listID) + "?" + q.Encode()
+}
+
+// tagURL is where clicking tag takes you: the list showing only that tag,
+// still open or done as it was. Clicking the tag already being shown goes back
+// to every task, so a second click undoes the first.
+func tagURL(listID int64, tag, current, filter string) string {
+	if tag == current {
+		tag = ""
+	}
+	return listURL(listID, tag, filter)
+}
+
+// tagged renders text with each #tag in it as a link that shows the task's
+// list filtered to that tag. Everything else is escaped as usual.
+func tagged(text string, row taskRow) template.HTML {
+	var b strings.Builder
+	last := 0
+	for _, m := range store.FindTags(text) {
+		b.WriteString(template.HTMLEscapeString(text[last:m.Start]))
+		class, title := "hashtag", "Show only tasks tagged "+text[m.Start:m.End]
+		if m.Tag == row.Tag {
+			class, title = "hashtag active", "Show every task again"
+		}
+		fmt.Fprintf(&b, `<a class="%s" href="%s" title="%s">%s</a>`, class,
+			template.HTMLEscapeString(tagURL(row.Task.ListID, m.Tag, row.Tag, row.Filter)),
+			template.HTMLEscapeString(title), template.HTMLEscapeString(text[m.Start:m.End]))
+		last = m.End
+	}
+	b.WriteString(template.HTMLEscapeString(text[last:]))
+	return template.HTML(b.String())
 }
 
 const dateLayout = "2006-01-02"
@@ -172,6 +226,9 @@ type taskRow struct {
 	// just says how many there are.
 	ShowThread bool
 	Thread     []store.Comment
+	// The tag and Open/Done filter the list is shown with, so a task's tags
+	// can link to the list filtered the same way, or undo the filter.
+	Tag, Filter string
 }
 
 type Server struct {
@@ -619,10 +676,14 @@ type pageData struct {
 	Tasks        []store.Task
 	Groups       []taskGroup // Today view sections
 	Filter       string      // "all", "open" or "done"
-	IsOwner      bool        // may delete the list and manage its members
-	Members      []store.Member
-	InviteURL    string
-	Threads      map[int64][]store.Comment // comments by task, on a list's own page
+	Tag          string      // only tasks with this #tag are shown, when set
+	TagCounts    []store.TagCount
+	// Count is the tasks with the tag, if any, for the All/Open/Done tabs.
+	Count     struct{ All, Open, Done int }
+	IsOwner   bool // may delete the list and manage its members
+	Members   []store.Member
+	InviteURL string
+	Threads   map[int64][]store.Comment // comments by task, on a list's own page
 }
 
 // taskGroup is one section of the Today view.
@@ -743,6 +804,20 @@ func (s *Server) pageList(w http.ResponseWriter, r *http.Request, u *store.User)
 	if filter != "open" && filter != "done" {
 		filter = "all"
 	}
+	// The tags come from every task, so the row of them above the list does
+	// not shrink to the one tag being shown.
+	d.TagCounts = store.CountTags(tasks)
+	if tag, ok := store.NormalizeTag(r.URL.Query().Get("tag")); ok {
+		d.Tag, tasks = tag, store.WithTag(tasks, tag)
+	}
+	for _, t := range tasks {
+		if t.Done {
+			d.Count.Done++
+		} else {
+			d.Count.Open++
+		}
+	}
+	d.Count.All = len(tasks)
 	if filter != "all" {
 		kept := tasks[:0]
 		for _, t := range tasks {
@@ -904,7 +979,15 @@ func (s *Server) formAddTask(w http.ResponseWriter, r *http.Request, u *store.Us
 		s.htmlErr(w, r, err)
 		return
 	}
-	_, err := s.store.AddTask(id, u.ID, r.FormValue("title"), r.FormValue("description"), r.FormValue("due"))
+	title := r.FormValue("title")
+	// A task added while the list is showing only #shopping would vanish
+	// the moment it was added, so it is tagged #shopping too.
+	if tag, ok := store.NormalizeTag(r.FormValue("tag")); ok && strings.TrimSpace(title) != "" {
+		if !slices.Contains(store.TagsIn(title, r.FormValue("description")), tag) {
+			title = strings.TrimRight(title, " ") + " #" + tag
+		}
+	}
+	_, err := s.store.AddTask(id, u.ID, title, r.FormValue("description"), r.FormValue("due"))
 	if err != nil && !errors.Is(err, store.ErrInvalid) {
 		s.fail(w, err)
 		return
@@ -1201,7 +1284,18 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 		s.respond(w, 0, nil, err)
 		return
 	}
+	var tag string
+	if q := r.URL.Query().Get("tag"); q != "" {
+		var ok bool
+		if tag, ok = store.NormalizeTag(q); !ok {
+			writeError(w, http.StatusBadRequest, "invalid tag: a tag is one word with a letter in it, like #shopping")
+			return
+		}
+	}
 	tasks, err := s.store.Tasks(id)
+	if tag != "" {
+		tasks = store.WithTag(tasks, tag)
+	}
 	s.respond(w, http.StatusOK, tasks, err)
 }
 

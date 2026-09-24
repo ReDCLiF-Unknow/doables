@@ -93,6 +93,8 @@ type Task struct {
 	Assignee   string `json:"assignee,omitempty"`
 	// Comments is how many there are; Comments(id) fetches them.
 	Comments int `json:"comments,omitempty"`
+	// Tags are the #words in the title and description (see FindTags).
+	Tags []string `json:"tags,omitempty"`
 }
 
 // Comment is one remark on a task: who said what, and when. Unlike the
@@ -738,6 +740,7 @@ func scanTask(sc interface{ Scan(...any) error }) (Task, error) {
 	var t Task
 	err := sc.Scan(&t.ID, &t.ListID, &t.ListName, &t.Title, &t.Description, &t.Done, &t.CreatedAt, &t.DueDate, &t.AddedBy, &t.DoneBy,
 		&t.AssigneeID, &t.Assignee, &t.Comments)
+	t.Tags = TagsIn(t.Title, t.Description)
 	return t, err
 }
 

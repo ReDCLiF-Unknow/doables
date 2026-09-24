@@ -102,6 +102,12 @@ font down to the icons the templates actually use (8KB rather than 844KB).
   the description, which anyone can overwrite, comments only add up; you can delete your own, nobody else's.
   A task shows how many it has everywhere, and the conversation itself on the list's page. New comments
   appear as they are written, and a half-typed one is never lost to someone else's change.
+- **Tags.** Put a word starting with `#` in a task's title or description, as in "Buy adapters #shopping",
+  and it becomes a tag. Click one to show only the tasks with it; click it again to show them all. The
+  list's tags are shown above its tasks, with how many each has. There is nothing to set up or tidy
+  away: a tag exists while some task mentions it, and `#Shopping` and `#shopping` are the same. A task
+  added while a tag is showing gets that tag, so it doesn't vanish as soon as you add it. Numbers like
+  "issue #12" are not tags.
 - **Due dates.** Optional on every task. Tasks show a badge ("Today", "Tomorrow", red "Overdue · Sep 17"), and
   open tasks sort soonest-due first.
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
@@ -159,6 +165,7 @@ export DOABLES_TOKEN=<token>   # PowerShell: $env:DOABLES_TOKEN = "<token>"
 doables new-list "Groceries"
 doables add 1 "Buy milk" -d "2 litres" --due 2026-10-01
 doables tasks 1
+doables tasks 1 --tag shopping   # only the tasks tagged #shopping
 doables edit 3 --title "Buy oat milk" --due 2026-10-05   # only the flags you give are changed
 doables edit 3 --due ""                                  # clear the due date
 doables assign 3 2    # give task 3 to member 2 (see `doables members`)
@@ -203,7 +210,7 @@ Dates are `YYYY-MM-DD`.
 | DELETE | `/api/lists/{id}` | owner only; the list can be restored for a day |
 | POST | `/api/lists/{id}/restore` | owner only, within a day of deleting it |
 | GET | `/api/lists/{id}/members` | |
-| GET | `/api/lists/{id}/tasks` | |
+| GET | `/api/lists/{id}/tasks` | `?tag=shopping` for only the tasks with that tag; each task lists its `tags` |
 | POST | `/api/lists/{id}/tasks` | `{"title": "...", "description": "...", "due_date": "..."}` |
 | PATCH | `/api/tasks/{id}` | any of `{"done": true, "title": "...", "description": "...", "due_date": "...", "assignee_id": 2}`; `"due_date": ""` clears the date and `"assignee_id": 0` clears the assignee |
 | DELETE | `/api/tasks/{id}` | moves the task to the trash |
