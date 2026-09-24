@@ -145,6 +145,42 @@ jobs:
           docker logs doables-arm
           exit 1
 
+  # The demo is how strangers first meet Doables, so check it the same way:
+  # the published image, a clean machine, the documented switch.
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Work out the image
+        id: img
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables:${{ inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
+
+      - name: A visitor lands in a list of their own
+        run: |
+          set -euo pipefail
+          docker run -d --name demo -p 8080:8080 -e DOABLES_DEMO=1 -v demo:/data '${{ steps.img.outputs.ref }}'
+          for _ in $(seq 1 30); do curl -sf http://localhost:8080/welcome > /dev/null && break; sleep 1; done
+          curl -sf http://localhost:8080/welcome | grep -q "This is a demo"
+          where=$(curl -s -o /dev/null -w '%{redirect_url}' -X POST http://localhost:8080/welcome --data 'name=Stranger')
+          case "$where" in
+            */lists/*) echo "a new visitor lands in a list of their own: $where" ;;
+            *) echo "::error::a new visitor was sent to '$where', not into a list"; docker logs demo; exit 1 ;;
+          esac
+          docker rm -f demo > /dev/null
+
+      - name: It refuses a database with real accounts in it
+        run: |
+          set -euo pipefail
+          docker run -d --name real -p 8081:8080 -v real:/data '${{ steps.img.outputs.ref }}'
+          for _ in $(seq 1 30); do curl -sf http://localhost:8081/welcome > /dev/null && break; sleep 1; done
+          curl -sf -X POST http://localhost:8081/api/users -d '{"name":"Somebody real"}' > /dev/null
+          docker rm -f real > /dev/null
+          if docker run --rm -e DOABLES_DEMO=1 -v real:/data '${{ steps.img.outputs.ref }}' > demo.log 2>&1; then
+            echo "::error::demo mode started on a database with a real account in it"
+            cat demo.log
+            exit 1
+          fi
+          grep -o 'refusing to start in demo mode.*' demo.log
+
   # The other documented way in.
   compose:
     runs-on: ubuntu-latest
