@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"doables/internal/demo"
 	"doables/internal/store"
 	"doables/internal/web"
 )
@@ -19,6 +20,8 @@ import (
 func main() {
 	addr := flag.String("addr", "localhost:8080", "address to listen on")
 	dbPath := flag.String("db", "doables.db", "path to the SQLite database file")
+	demoMode := flag.Bool("demo", os.Getenv("DOABLES_DEMO") != "",
+		"run as a public demo: every visitor gets example lists of their own, erased a day later (env DOABLES_DEMO)")
 	flag.Parse()
 
 	s, err := store.Open(*dbPath)
@@ -32,6 +35,15 @@ func main() {
 	defer stop()
 
 	app := web.New(s)
+	if *demoMode {
+		if err := demo.Prepare(s); err != nil {
+			s.Close()
+			log.Fatalf("refusing to start in demo mode: %v", err) // non-zero, so a supervisor notices
+		}
+		app.SetDemo(func(u store.User) (int64, error) { return demo.Seed(s, u) })
+		go demo.Sweep(ctx, s, demo.Lifetime, 10*time.Minute)
+		log.Printf("demo mode: every visitor gets example lists, erased %.0f hours after they start", demo.Lifetime.Hours())
+	}
 	srv := &http.Server{
 		Handler: app,
 		// Enough that nobody can hold a connection open by dribbling out a

@@ -56,8 +56,11 @@ func TestEveryIconIsVendored(t *testing.T) {
 // whoever controls that CDN could run code on the same origin as the session
 // cookie.
 func TestPagesFetchNothingFromAnywhereElse(t *testing.T) {
-	refs := regexp.MustCompile(`(?:src|href)="([^"]+)"`).FindAllStringSubmatch(templateSource(t), -1)
-	if len(refs) < 5 {
+	// Only tags that make the browser fetch something count. An <a href> to
+	// another site is a place a person may choose to go, not a request.
+	refs := regexp.MustCompile(`<(?:link|script|img|iframe|source|video|audio|embed)\b[^>]*?\b(?:src|href)="([^"]+)"`).
+		FindAllStringSubmatch(templateSource(t), -1)
+	if len(refs) < 4 {
 		t.Fatalf("only found %d references; the search is probably broken", len(refs))
 	}
 	for _, m := range refs {

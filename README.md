@@ -55,6 +55,23 @@ on first run, with its write-ahead log beside it while the server is running.
 
 Either way, open <http://localhost:8080> and pick a name.
 
+## A public demo
+
+To let people try Doables without installing anything, run a separate server in demo mode:
+
+```
+docker run -d --name doables-demo -p 8081:8080 -e DOABLES_DEMO=1 -v doables-demo:/data ghcr.io/redclif-unknow/doables:latest
+```
+
+(or `doables-server -demo`). Everyone who picks a name lands in their own filled-in copy of some example
+lists, shared with two pretend teammates, rather than on an empty page. Nobody sees anybody else's, so
+there is nothing to moderate, and each one is deleted 24 hours after its visitor arrived. The banner on
+every page says so, and suggests opening the Share link in a private window to watch two people work on
+one list.
+
+**Give the demo a database of its own.** Demo mode deletes every account a day after it was made, so it
+refuses to start on a database that already has accounts in it, rather than deleting them.
+
 ## Run from source
 
 ```

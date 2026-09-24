@@ -188,7 +188,15 @@ type Server struct {
 	// page elsewhere could sign you in as someone else, replacing your token.
 	// Requests with no browser headers at all, like the CLI's, are allowed.
 	sameOrigin *http.CrossOriginProtection
+	// demoSeed is set when this server is a public demo: it fills a new
+	// visitor's sandbox and returns the list to show them first.
+	demoSeed func(store.User) (int64, error)
 }
+
+// SetDemo turns the server into a public demo. Everyone who picks a name is
+// given seed's example lists to play with, and the pages say that nothing
+// here lasts. Removing old sandboxes is the caller's job (see package demo).
+func (s *Server) SetDemo(seed func(store.User) (int64, error)) { s.demoSeed = seed }
 
 func New(s *store.Store) *Server {
 	srv := &Server{
@@ -395,9 +403,14 @@ func (s *Server) authed(h userHandler) http.HandlerFunc {
 type simplePage struct {
 	Title, Heading, Subtitle, Action, Next, Button, Error string
 	NeedName, ShowToken                                   bool
+	Demo                                                  bool
 }
 
 func (s *Server) renderTmpl(w http.ResponseWriter, status int, name string, data any) {
+	if p, ok := data.(simplePage); ok {
+		p.Demo = s.demoSeed != nil
+		data = p
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
@@ -436,7 +449,7 @@ func (s *Server) tooManySignups(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) welcomePost(w http.ResponseWriter, r *http.Request) {
 	next := r.FormValue("next")
-	_, token, err := s.store.CreateUser(r.FormValue("name"))
+	u, token, err := s.store.CreateUser(r.FormValue("name"))
 	if errors.Is(err, store.ErrInvalid) {
 		s.renderTmpl(w, http.StatusBadRequest, "welcome.html", welcomePage(next, "Please enter a name (up to 40 characters)."))
 		return
@@ -445,6 +458,22 @@ func (s *Server) welcomePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSession(w, r, token)
+	if s.demoSeed != nil {
+		// A demo that starts on an empty page shows nothing, so the visitor
+		// begins inside a list that already has people and work in it,
+		// unless they were on their way somewhere in particular.
+		first, err := s.demoSeed(u)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if dest := safeNext(next); dest != "/" {
+			http.Redirect(w, r, dest, http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, listPath(first), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, safeNext(next), http.StatusSeeOther)
 }
 
@@ -584,6 +613,7 @@ type pageData struct {
 	TodayCount   int    // tasks overdue or due today, across all lists
 	TodayOverdue bool   // some of those are overdue
 	MineCount    int    // open tasks assigned to me, across all lists
+	Demo         bool   // this server is a public demo
 	Lists        []store.List
 	Current      *store.List
 	Tasks        []store.Task
@@ -603,7 +633,7 @@ type taskGroup struct {
 
 // basePage fills in what every page with the sidebar needs.
 func (s *Server) basePage(r *http.Request, u *store.User, view string) (pageData, error) {
-	d := pageData{View: view, User: u, Path: r.URL.RequestURI(), Today: today()}
+	d := pageData{View: view, User: u, Path: r.URL.RequestURI(), Today: today(), Demo: s.demoSeed != nil}
 	var err error
 	if d.Lists, err = s.store.Lists(u.ID); err != nil {
 		return d, err

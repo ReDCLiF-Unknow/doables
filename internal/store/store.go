@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -164,6 +165,11 @@ CREATE TABLE IF NOT EXISTS comments (
 	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS comments_task_id ON comments(task_id);
+-- Facts about the database itself, such as whether it belongs to a demo.
+CREATE TABLE IF NOT EXISTS settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
 `
 
 // Open opens (creating or upgrading if needed) the SQLite database at path.
@@ -413,6 +419,53 @@ func (s *Store) UserByToken(token string) (User, error) {
 		return u, ErrNotFound
 	}
 	return u, err
+}
+
+// IsDemo reports whether this database has been set aside for a public demo.
+func (s *Store) IsDemo() (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'demo' AND value = '1'`).Scan(&n)
+	return n > 0, err
+}
+
+// MarkDemo sets the database aside for a public demo, for good.
+func (s *Store) MarkDemo() error {
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES ('demo', '1')`)
+	return err
+}
+
+// UserCount is how many accounts there are.
+func (s *Store) UserCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
+	return n, err
+}
+
+// PurgeUsersOlderThan deletes every account created more than age ago,
+// together with the lists it owns and everything on them, and reports how
+// many accounts went. It exists for the public demo, where each visitor's
+// sandbox is meant to last a day.
+func (s *Store) PurgeUsersOlderThan(age time.Duration) (int64, error) {
+	cutoff := "-" + strconv.FormatInt(int64(age/time.Second), 10) + " seconds"
+	var n int64
+	err := s.tx(func(tx *sql.Tx) error {
+		// Lists first. Deleting an owner would otherwise leave their lists
+		// ownerless, which in Doables means public: open to every visitor.
+		if _, err := tx.Exec(`DELETE FROM lists WHERE owner_id IN
+			(SELECT id FROM users WHERE created_at < datetime('now', ?))`, cutoff); err != nil {
+			return err
+		}
+		res, err := tx.Exec(`DELETE FROM users WHERE created_at < datetime('now', ?)`, cutoff)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	if err == nil && n > 0 {
+		s.publish(nil, true) // open pages of the people who went will send them to sign in
+	}
+	return n, err
 }
 
 // MarkTokenSaved records that someone has their token somewhere safe, which

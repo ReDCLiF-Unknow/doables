@@ -151,15 +151,25 @@
       <!-- There are no passwords, so the token is the only way back in. Say so
            until they tell us they have it somewhere. -->
       <div data-live="key-banner">
-      {{if not .User.TokenSaved}}
-      <div class="alert alert-info d-flex align-items-center" role="status">
-        <i class="ti ti-key fs-2 me-3"></i>
+      {{if .Demo}}
+      <div class="alert alert-azure d-flex flex-wrap align-items-center gap-3 page-banner" role="status">
+        <i class="ti ti-clock fs-2"></i>
+        <div class="flex-fill">
+          <strong>This is a demo.</strong> These lists are yours alone, and everything here is erased 24 hours after
+          you started, so try anything. To see two people working on one list, click <strong>Share</strong> and open
+          the invite link in a private window.
+        </div>
+        <a class="btn" href="https://github.com/ReDCLiF-Unknow/doables">Get Doables</a>
+      </div>
+      {{else if not .User.TokenSaved}}
+      <div class="alert alert-info d-flex flex-wrap align-items-center gap-3 page-banner" role="status">
+        <i class="ti ti-key fs-2"></i>
         <div class="flex-fill">
           <strong>Save your sign-in key.</strong>
           It is the only way back into this account. Clear your browser's data without it and these
           lists are gone: there is no password to reset and no email to send.
         </div>
-        <div class="d-flex gap-2 ms-3">
+        <div class="d-flex gap-2">
           <button class="btn" type="button" data-bs-toggle="modal" data-bs-target="#profile-modal">
             <i class="ti ti-eye me-1"></i>Show it
           </button>

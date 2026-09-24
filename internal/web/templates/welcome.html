@@ -19,6 +19,12 @@
         <h2 class="h2 text-center mb-1">{{.Heading}}</h2>
         <p class="text-secondary text-center mb-4">{{.Subtitle}}</p>
         {{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
+        {{if and .Demo .NeedName}}
+        <div class="alert alert-azure" role="status">
+          <strong>This is a demo.</strong> Pick any name and you get some example lists to play with, all your own.
+          Everything is erased 24 hours after you start.
+        </div>
+        {{end}}
         <form method="post" action="{{.Action}}">
           {{if .NeedName}}
           <div class="mb-3">

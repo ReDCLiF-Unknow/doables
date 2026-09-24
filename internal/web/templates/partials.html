@@ -68,6 +68,15 @@
     }
     .navbar-vertical .navbar-nav .nav-link.active { font-weight: 600; }
 
+    /* Banners across the top of the page. The text asks for enough room to
+       read comfortably next to its icon; when the buttons beside it would
+       squeeze it narrower than that, they drop onto a line of their own. */
+    /* Bootstrap's .flex-fill sets flex with !important and asks for the text's
+       full one-line width, which pushes the icon and buttons onto lines of
+       their own; start from 17rem instead and grow into the space left. */
+    .page-banner > .flex-fill { flex: 1 1 17rem !important; min-width: min(100%, 17rem); }
+    @media (max-width: 575.98px) { .page-banner > .ti { display: none; } }
+
     /* A task's comments: folded away until you open them */
     .task-thread summary { display: inline-flex; align-items: center; list-style: none; cursor: pointer;
                            color: var(--tblr-secondary); margin-top: .15rem; }
