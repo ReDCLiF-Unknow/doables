@@ -23,13 +23,31 @@ type subscriber struct {
 	ch     chan struct{} // buffered(1): bursts of changes coalesce into one signal
 }
 
+// maxStreams is how many live-update connections one person may hold open at
+// once. Each is a goroutine and a connection for as long as it lasts, so
+// without a cap one token could open thousands. This is more tabs and devices
+// than anybody uses; a page over the limit still works, it just stops updating
+// by itself until another tab is closed.
+const maxStreams = 16
+
 func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}} }
 
+// subscribe registers a stream for userID, or returns nil if they already
+// have maxStreams open.
 func (h *hub) subscribe(userID int64) *subscriber {
-	s := &subscriber{userID: userID, ch: make(chan struct{}, 1)}
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	open := 0
+	for s := range h.subs {
+		if s.userID == userID {
+			open++
+		}
+	}
+	if open >= maxStreams {
+		return nil
+	}
+	s := &subscriber{userID: userID, ch: make(chan struct{}, 1)}
 	h.subs[s] = struct{}{}
-	h.mu.Unlock()
 	return s
 }
 
@@ -64,13 +82,19 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, u *store.User) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+	sub := s.hub.subscribe(u.ID)
+	if sub == nil {
+		// A browser's EventSource gives up for good on an error status rather
+		// than retrying, so this does not turn into a reconnect storm.
+		http.Error(w, "too many open live-update connections", http.StatusTooManyRequests)
+		return
+	}
+	defer s.hub.unsubscribe(sub)
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("X-Accel-Buffering", "no") // don't let a reverse proxy buffer the stream
-
-	sub := s.hub.subscribe(u.ID)
-	defer s.hub.unsubscribe(sub)
 
 	fmt.Fprint(w, "retry: 3000\n\n")
 	fl.Flush()

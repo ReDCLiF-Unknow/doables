@@ -142,15 +142,22 @@ type Server struct {
 	// signups limits how fast one address can create identities, the only
 	// thing a stranger can do here without having one already.
 	signups *limiter
+	// sameOrigin refuses requests that change something when a browser sent
+	// them from another site. SameSite=Lax stops such a request carrying the
+	// victim's cookie, but not its response setting a new one: without this a
+	// page elsewhere could sign you in as someone else, replacing your token.
+	// Requests with no browser headers at all, like the CLI's, are allowed.
+	sameOrigin *http.CrossOriginProtection
 }
 
 func New(s *store.Store) *Server {
 	srv := &Server{
-		store:   s,
-		tmpl:    template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
-		mux:     http.NewServeMux(),
-		hub:     newHub(),
-		signups: newLimiter(signupBurst, signupRefill),
+		store:      s,
+		tmpl:       template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
+		mux:        http.NewServeMux(),
+		hub:        newHub(),
+		signups:    newLimiter(signupBurst, signupRefill),
+		sameOrigin: http.NewCrossOriginProtection(),
 	}
 	s.SetNotifier(srv.hub.publish)
 	srv.routes()
@@ -174,6 +181,10 @@ const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := s.sameOrigin.Check(r); err != nil {
+		http.Error(w, "refused: that request came from another site", http.StatusForbidden)
+		return
+	}
 	if token := tokenFrom(r); token != "" {
 		if u, err := s.store.UserByToken(token); err == nil {
 			r = r.WithContext(context.WithValue(r.Context(), userKey{}, &u))
@@ -272,6 +283,14 @@ func userID(r *http.Request) int64 {
 	return 0
 }
 
+// isHTTPS reports whether the browser reached us over HTTPS, either directly
+// or through a proxy that terminated TLS and said so. Trusting the header is
+// safe for both of its uses: forging it can only make a cookie stricter or a
+// link more secure than it needed to be, never less.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
 func setSession(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
@@ -280,7 +299,10 @@ func setSession(w http.ResponseWriter, r *http.Request, token string) {
 		MaxAge:   365 * 24 * 3600,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		// The token is the whole account, so it must never travel over plain
+		// HTTP. Behind a proxy that terminates TLS, r.TLS is always nil, which
+		// used to leave this off in exactly the deployment it matters most.
+		Secure: isHTTPS(r),
 	})
 }
 
@@ -294,7 +316,7 @@ func safeNext(next string) string {
 
 func baseURL(r *http.Request) string {
 	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+	if isHTTPS(r) {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
@@ -435,6 +457,15 @@ func (s *Server) joinPost(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userFrom(r)
 	if u == nil {
+		// Joining without an identity creates one, so it counts against the
+		// same limit as signing up; otherwise one invite link would be a way
+		// round it. Someone already signed in is not creating anybody.
+		if !s.signups.allow(clientIP(r)) {
+			w.Header().Set("Retry-After", "60")
+			s.renderTmpl(w, http.StatusTooManyRequests, "welcome.html",
+				joinPage(l, code, nil, "Too many new names from this connection. Try again in a minute."))
+			return
+		}
 		nu, token, err := s.store.CreateUser(r.FormValue("name"))
 		if errors.Is(err, store.ErrInvalid) {
 			s.renderTmpl(w, http.StatusBadRequest, "welcome.html", joinPage(l, code, nil, "Please enter a name (up to 40 characters)."))
