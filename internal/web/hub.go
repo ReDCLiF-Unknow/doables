@@ -16,6 +16,9 @@ import (
 type hub struct {
 	mu   sync.Mutex
 	subs map[*subscriber]struct{}
+	// closing is closed when the server shuts down, which ends every stream.
+	closing   chan struct{}
+	closeOnce sync.Once
 }
 
 type subscriber struct {
@@ -30,7 +33,11 @@ type subscriber struct {
 // by itself until another tab is closed.
 const maxStreams = 16
 
-func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}} }
+func newHub() *hub { return &hub{subs: map[*subscriber]struct{}{}, closing: make(chan struct{})} }
+
+// close ends every open stream. Streams never finish by themselves, so a
+// graceful shutdown would otherwise wait for them until it gave up.
+func (h *hub) close() { h.closeOnce.Do(func() { close(h.closing) }) }
 
 // subscribe registers a stream for userID, or returns nil if they already
 // have maxStreams open.
@@ -104,6 +111,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, u *store.User) {
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-s.hub.closing:
 			return
 		case <-sub.ch:
 			fmt.Fprint(w, "event: changed\ndata: {}\n\n")

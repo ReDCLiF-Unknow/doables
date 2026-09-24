@@ -178,6 +178,11 @@ const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 	"img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; " +
 	"frame-ancestors 'none'; base-uri 'none'"
 
+// CloseStreams ends every live-update stream, for a server that is shutting
+// down: register it with http.Server.RegisterOnShutdown. Ordinary requests are
+// left to finish.
+func (s *Server) CloseStreams() { s.hub.close() }
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("X-Content-Type-Options", "nosniff")

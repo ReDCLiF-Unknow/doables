@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -198,5 +199,38 @@ func TestLiveUpdateStreamsAreCappedPerPerson(t *testing.T) {
 			t.Fatal("closing a stream never freed a place for a new one")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// 5. Streams never end by themselves, so shutting down has to end them, or a
+// graceful shutdown waits for them until it gives up.
+func TestShuttingDownEndsLiveUpdateStreams(t *testing.T) {
+	e := newEnv(t)
+	alex := e.register("Alex")
+	_, cancel := e.events(alex)
+	defer cancel()
+
+	ended := make(chan struct{})
+	go func() {
+		ctx, stop := context.WithCancel(context.Background())
+		defer stop()
+		req, _ := http.NewRequestWithContext(ctx, "GET", e.srv.URL+"/events", nil)
+		req.Header.Set("Authorization", "Bearer "+alex)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			close(ended)
+			return
+		}
+		io.Copy(io.Discard, resp.Body) // returns when the server ends the stream
+		resp.Body.Close()
+		close(ended)
+	}()
+	time.Sleep(200 * time.Millisecond)
+
+	e.srv.Config.Handler.(*Server).CloseStreams()
+	select {
+	case <-ended:
+	case <-time.After(3 * time.Second):
+		t.Fatal("CloseStreams did not end an open stream")
 	}
 }
