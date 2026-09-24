@@ -345,6 +345,13 @@
               {{end}}
             </div>
             {{end}}
+            {{if $.More}}
+            <!-- The rest of a long list, loaded on request (in place, when scripts run) -->
+            <div class="list-group-item d-flex flex-wrap align-items-center justify-content-center gap-2 py-3">
+              <a class="btn" href="{{$.MoreURL}}" data-more><i class="ti ti-chevron-down me-1"></i>Show {{atMost $.More pageSize}} more</a>
+              <span class="text-secondary small">{{len $.Tasks}} of {{add (len $.Tasks) $.More}} shown</span>
+            </div>
+            {{end}}
           </div>
         </div>
       {{end}}
@@ -679,6 +686,9 @@
     if (!form.matches || !form.matches('[data-inplace]')) return;
     e.preventDefault();
     var params = new URLSearchParams(fieldsOf(form, e.submitter));
+    // Come back to the page as it is now, which "Show more" (or a dropped
+    // ?undo=) may have changed since the form was written into it.
+    if (params.has('next')) params.set('next', location.pathname + location.search);
     var undoID = null;
     if (form.hasAttribute('data-undo')) undoID = new URL(form.action).pathname.split('/')[2];
     post(form.action, params).then(function (html) {
@@ -718,6 +728,22 @@
 
   // ---- inline editing ----
   document.addEventListener('click', function (e) {
+    // "Show more" fetches the longer page and swaps it in, so the tasks you
+    // were looking at stay where they are rather than jumping to the top.
+    var more = e.target.closest('[data-more]');
+    if (more && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      more.classList.add('disabled');
+      fetch(more.href, { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+        .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+        .then(function (html) {
+          var there = new URL(more.href);
+          history.replaceState(null, '', there.pathname + there.search);  // live updates keep this many
+          apply(html);
+        })
+        .catch(function () { location.href = more.href; });
+      return;
+    }
     var talk = e.target.closest('[data-open-thread]');
     if (talk) {
       var thread = document.querySelector('details[data-thread="' + talk.getAttribute('data-open-thread') + '"]');

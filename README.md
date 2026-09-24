@@ -110,6 +110,9 @@ font down to the icons the templates actually use (8KB rather than 844KB).
   "issue #12" are not tags.
 - **Due dates.** Optional on every task. Tasks show a badge ("Today", "Tomorrow", red "Overdue · Sep 17"), and
   open tasks sort soonest-due first.
+- **Long lists.** Open tasks come first, then finished ones, most recently finished first. A list shows 50
+  tasks at a time with **Show 50 more** at the bottom, which loads in place; live updates keep however many
+  you have opened. A list used for a year stays quick, however many finished tasks it has piled up.
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
   lists: **Overdue**, **Today** and **Next 7 days**. Its badge counts what is overdue or due today (red when
   something is overdue). "Today" is the server's local date.

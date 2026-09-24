@@ -92,6 +92,10 @@ var funcs = template.FuncMap{
 	// listURL and tagURL are the addresses of a list shown a particular way.
 	"listURL": listURL,
 	"tagURL":  tagURL,
+	// atMost is the smaller of n and max, e.g. "Show 50 more" when 200 are left.
+	"atMost":   func(n, max int) int { return min(n, max) },
+	"pageSize": func() int { return pageSize },
+	"add":      func(a, b int) int { return a + b },
 }
 
 // listURL is the address of a list showing only the tasks with tag (none when
@@ -108,6 +112,18 @@ func listURL(listID int64, tag, filter string) string {
 		return listPath(listID)
 	}
 	return listPath(listID) + "?" + q.Encode()
+}
+
+// pageSize is how many tasks a list page shows before offering more.
+const pageSize = 50
+
+// withShow asks a list address for its first n tasks.
+func withShow(listURL string, n int) string {
+	sep := "?"
+	if strings.Contains(listURL, "?") {
+		sep = "&"
+	}
+	return listURL + sep + "show=" + strconv.Itoa(n)
 }
 
 // tagURL is where clicking tag takes you: the list showing only that tag,
@@ -679,7 +695,11 @@ type pageData struct {
 	Tag          string      // only tasks with this #tag are shown, when set
 	TagCounts    []store.TagCount
 	// Count is the tasks with the tag, if any, for the All/Open/Done tabs.
-	Count     struct{ All, Open, Done int }
+	Count struct{ All, Open, Done int }
+	// More is how many tasks are not shown yet, a list being shown pageSize
+	// at a time; MoreURL shows the next ones as well.
+	More      int
+	MoreURL   string
 	IsOwner   bool // may delete the list and manage its members
 	Members   []store.Member
 	InviteURL string
@@ -826,6 +846,18 @@ func (s *Server) pageList(w http.ResponseWriter, r *http.Request, u *store.User)
 			}
 		}
 		tasks = kept
+	}
+	// Every row carries its own menus and forms, a few KB each, and every
+	// change anyone makes sends the page again to everyone looking at it, so
+	// a list a year old with a thousand finished tasks would be megabytes.
+	// Show the first pageSize, and more on request (?show=).
+	shown := pageSize
+	if n, err := strconv.Atoi(r.URL.Query().Get("show")); err == nil && n > shown {
+		shown = n
+	}
+	if len(tasks) > shown {
+		d.More, tasks = len(tasks)-shown, tasks[:shown]
+		d.MoreURL = withShow(listURL(id, d.Tag, filter), shown+pageSize)
 	}
 	d.Current, d.Tasks, d.Filter, d.IsOwner = &cur, tasks, filter, canManage(cur, u.ID)
 	if d.Threads, err = s.store.ListComments(id); err != nil {

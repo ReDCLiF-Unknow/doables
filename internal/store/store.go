@@ -237,6 +237,9 @@ func (s *Store) migrate() error {
 		{"tasks", "assigned_to", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"tasks", "due_date", "TEXT"},
 		{"tasks", "deleted_at", "TIMESTAMP"},
+		// When it was ticked off, so the most recently finished come first.
+		// Tasks finished before this column existed have none.
+		{"tasks", "done_at", "TEXT"},
 	} {
 		has, err := s.hasColumn(c.table, c.column)
 		if err != nil {
@@ -761,10 +764,16 @@ func (s *Store) queryTasks(where string, args ...any) ([]Task, error) {
 	return tasks, rows.Err()
 }
 
-// Tasks returns a list's tasks: open ones first, soonest due date first.
+// Tasks returns a list's tasks: the open ones first, soonest due first, then
+// the finished ones, most recently finished first. A list used for a year is
+// mostly finished tasks, and the ones worth seeing are the ones just done.
 func (s *Store) Tasks(listID int64) ([]Task, error) {
 	return s.queryTasks(`WHERE t.list_id = ? AND t.deleted_at IS NULL
-		ORDER BY t.done, t.due_date IS NULL, t.due_date, t.id`, listID)
+		ORDER BY t.done,
+			CASE WHEN NOT t.done THEN t.due_date IS NULL END,
+			CASE WHEN NOT t.done THEN t.due_date END,
+			CASE WHEN NOT t.done THEN t.id END,
+			t.done_at IS NULL, t.done_at DESC, t.id DESC`, listID)
 }
 
 func (s *Store) oneTask(where string, id int64) (Task, error) {
@@ -869,7 +878,11 @@ func (s *Store) SetDone(id int64, done bool, userID int64) (Task, error) {
 	if done {
 		by = nullID(userID)
 	}
-	if err := s.affected(s.db.Exec(`UPDATE tasks SET done = ?, done_by = ? WHERE id = ? AND deleted_at IS NULL`, done, by, id)); err != nil {
+	// done_at is to the millisecond, so tasks ticked off in quick succession
+	// still come back in the order they were finished.
+	if err := s.affected(s.db.Exec(`UPDATE tasks SET done = ?, done_by = ?,
+		done_at = CASE WHEN ? THEN strftime('%Y-%m-%d %H:%M:%f', 'now') END
+		WHERE id = ? AND deleted_at IS NULL`, done, by, done, id)); err != nil {
 		return Task{}, err
 	}
 	t, err := s.Task(id)
