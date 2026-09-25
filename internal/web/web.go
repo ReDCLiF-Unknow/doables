@@ -85,7 +85,7 @@ var funcs = template.FuncMap{
 			ShowWho: p.Current != nil && p.Current.Members > 1,
 			Me:      p.User.ID, Members: p.Members,
 			ShowThread: p.View == "list", Thread: p.Threads[t.ID],
-			Tag: p.Tag, Filter: p.Filter}
+			Tag: p.Tag, Filter: p.Filter, Unread: p.Unread[t.ID]}
 	},
 	// tagged shows a task's title or description with its #tags as links.
 	"tagged": tagged,
@@ -294,6 +294,8 @@ type taskRow struct {
 	// The tag and Open/Done filter the list is shown with, so a task's tags
 	// can link to the list filtered the same way, or undo the filter.
 	Tag, Filter string
+	// Unread is what other people have said here that the viewer has not seen.
+	Unread store.Unread
 }
 
 type Server struct {
@@ -415,6 +417,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tasks/{id}/assign", s.authed(s.formAssignTask))
 	s.mux.HandleFunc("POST /tasks/{id}/comments", s.authed(s.formAddComment))
 	s.mux.HandleFunc("POST /comments/{id}/delete", s.authed(s.formDeleteComment))
+	s.mux.HandleFunc("POST /tasks/{id}/seen", s.authed(s.formSeen))
 	s.mux.HandleFunc("POST /tasks/{id}/delete", s.authed(s.formDeleteTask))
 	s.mux.HandleFunc("POST /tasks/{id}/restore", s.authed(s.formRestoreTask))
 
@@ -757,6 +760,11 @@ type pageData struct {
 	Members   []store.Member
 	InviteURL string
 	Threads   map[int64][]store.Comment // comments by task, on a list's own page
+	// Comments by other people the viewer has not seen yet: by task, the
+	// total by list for the sidebar and Overview, and in all, for the title.
+	Unread       map[int64]store.Unread
+	UnreadByList map[int64]int
+	UnreadTotal  int
 }
 
 // taskGroup is one section of the Today view.
@@ -777,8 +785,17 @@ func (s *Server) basePage(r *http.Request, u *store.User, view string) (pageData
 		return d, err
 	}
 	d.TodayCount, d.TodayOverdue = overdue+due, overdue > 0
-	d.MineCount, err = s.store.AssignedCount(u.ID)
-	return d, err
+	if d.MineCount, err = s.store.AssignedCount(u.ID); err != nil {
+		return d, err
+	}
+	if d.Unread, err = s.store.Unread(u.ID); err != nil {
+		return d, err
+	}
+	d.UnreadByList = store.UnreadByList(d.Unread)
+	for _, n := range d.UnreadByList {
+		d.UnreadTotal += n
+	}
+	return d, nil
 }
 
 // backTo is where an action should send the browser: the page it came from
@@ -1171,6 +1188,26 @@ func (s *Server) formAddComment(w http.ResponseWriter, r *http.Request, u *store
 	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
 }
 
+// formSeen records that the caller has read a task's conversation, which the
+// page does when its thread is opened.
+func (s *Server) formSeen(w http.ResponseWriter, r *http.Request, u *store.User) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	t, _, err := s.store.TaskAccess(id, u.ID)
+	if err != nil {
+		s.htmlErr(w, r, err)
+		return
+	}
+	if err := s.store.MarkSeen(u.ID, id); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
+}
+
 // formDeleteComment takes back something you said.
 func (s *Server) formDeleteComment(w http.ResponseWriter, r *http.Request, u *store.User) {
 	id, ok := pathID(r)
@@ -1480,6 +1517,10 @@ func (s *Server) apiComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cs, err := s.store.Comments(id)
+	// Reading the conversation through the API is reading it.
+	if err == nil && userID(r) != 0 {
+		err = s.store.MarkSeen(userID(r), id)
+	}
 	s.respond(w, http.StatusOK, cs, err)
 }
 

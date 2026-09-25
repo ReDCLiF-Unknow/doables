@@ -189,6 +189,13 @@ CREATE TABLE IF NOT EXISTS comments (
 	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS comments_task_id ON comments(task_id);
+-- The newest comment each person has seen on each task (see unread.go).
+CREATE TABLE IF NOT EXISTS comment_reads (
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+	seen_up_to INTEGER NOT NULL,
+	PRIMARY KEY (user_id, task_id)
+);
 -- Facts about the database itself, such as whether it belongs to a demo.
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
@@ -272,6 +279,10 @@ func (s *Store) migrate() error {
 				return err
 			}
 		}
+	}
+
+	if err := s.startUnreadCounting(); err != nil {
+		return err
 	}
 
 	// Indexes on columns added above: they cannot live in the schema, which
@@ -993,6 +1004,12 @@ func (s *Store) AddComment(taskID, userID int64, body string) (Comment, error) {
 		return Comment{}, err
 	}
 	id, _ := res.LastInsertId()
+	// Whoever writes a comment has read the conversation they are answering.
+	if userID != 0 {
+		if err := s.markSeen(userID, taskID); err != nil {
+			return Comment{}, err
+		}
+	}
 	s.changed(t.ListID)
 	return s.comment(id)
 }

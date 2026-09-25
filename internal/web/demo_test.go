@@ -33,7 +33,7 @@ func TestTheDemoStartsSomewhereUseful(t *testing.T) {
 	}
 
 	_, page := e.page(c.Value, loc)
-	for _, want := range []string{"Weekend in Lisbon", "This is a demo", "Get Doables", "2 comments"} {
+	for _, want := range []string{"Weekend in Lisbon", "This is a demo", "Get Doables", "2 new"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the visitor's first page does not show %q", want)
 		}

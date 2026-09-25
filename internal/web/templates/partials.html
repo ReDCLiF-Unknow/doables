@@ -112,6 +112,24 @@
                 color: var(--tblr-secondary); padding: .5rem 1rem; background: var(--tblr-bg-surface-secondary); }
     .list-day-note { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
+    /* Comments from other people you have not read yet. They are what the
+       rest of the page is least likely to tell you, so they stand out: a bar
+       beside the task, and the latest one quoted under it. */
+    .task-row.has-unread { box-shadow: inset 3px 0 0 var(--tblr-primary); }
+    .unread-line { display: flex; align-items: center; gap: .5rem; max-width: min(100%, 36rem); margin-top: .3rem;
+                   padding: .3rem .6rem; border-radius: var(--tblr-border-radius); font-size: .875rem;
+                   color: var(--tblr-body-color); text-decoration: none; cursor: pointer; list-style: none;
+                   background: color-mix(in srgb, var(--tblr-primary) 10%, transparent); }
+    .unread-line::-webkit-details-marker { display: none; }
+    .unread-line:hover { color: var(--tblr-body-color); text-decoration: none;
+                         background: color-mix(in srgb, var(--tblr-primary) 18%, transparent); }
+    .unread-line .avatar { flex-shrink: 0; }
+    .unread-line .unread-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .unread-line .badge { flex-shrink: 0; }
+    .comment-new { background: color-mix(in srgb, var(--tblr-primary) 10%, transparent);
+                   border-radius: var(--tblr-border-radius); padding: .35rem .5rem; margin-left: -.5rem; }
+    .unread-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tblr-primary); flex-shrink: 0; }
+
     /* Inline editing: [data-edit-scope] toggles between its view and its form */
     [data-edit-scope] [data-edit-form] { display: none; }
     [data-edit-scope].is-editing [data-edit-form] { display: block; }
@@ -170,9 +188,16 @@
   </style>
 {{end}}
 
+{{/* What is new in a task's conversation: who said the latest thing, what,
+     and how many are new. Argument: store.Unread. */}}
+{{define "unreadpreview"}}{{with .Latest}}
+<span class="avatar avatar-xs rounded-circle bg-{{color .AuthorID}}-lt">{{if .Author}}{{initial .Author}}{{else}}?{{end}}</span>
+<span class="unread-text"><strong>{{if .Author}}{{.Author}}{{else}}Someone who has left{{end}}</strong> {{.Body}}</span>
+{{end}}<span class="badge bg-blue text-white">{{.Count}} new</span>{{end}}
+
 {{/* One task, shown on a list page or in the Today view. Argument: taskRow. */}}
 {{define "taskrow"}}{{with .Task}}
-<div class="list-group-item task-row{{if .Done}} task-done{{end}}" data-edit-scope>
+<div class="list-group-item task-row{{if .Done}} task-done{{end}}{{if $.Unread.Count}} has-unread{{end}}" data-edit-scope>
   <div class="row align-items-center g-3" data-edit-view>
     <div class="col-auto">
       <form method="post" action="/tasks/{{.ID}}/toggle" data-inplace>
@@ -190,8 +215,12 @@
         {{if .DoneBy}}<div class="text-green small"><i class="ti ti-user-check me-1"></i>Done by {{.DoneBy}}</div>
         {{else if .AddedBy}}<div class="text-secondary small"><i class="ti ti-user me-1"></i>Added by {{.AddedBy}}</div>{{end}}
       {{end}}
-      {{if and (not $.ShowThread) .Comments}}
-      <div class="small text-secondary"><i class="ti ti-message me-1"></i>{{plural .Comments "comment"}}</div>
+      {{if not $.ShowThread}}
+        {{if $.Unread.Count}}
+        <a class="unread-line" href="/lists/{{.ListID}}#thread-{{.ID}}" title="Read what was said">{{template "unreadpreview" $.Unread}}</a>
+        {{else if .Comments}}
+        <div class="small text-secondary"><i class="ti ti-message me-1"></i>{{plural .Comments "comment"}}</div>
+        {{end}}
       {{end}}
     </div>
     {{if .DueDate}}
@@ -237,11 +266,15 @@
     <!-- The conversation gets a line of its own under the task, so on a phone
          it has the whole width, and the tick box and date stay beside the title. -->
     <div class="col-12 task-thread-col">
-        <details class="task-thread{{if not .Comments}} thread-empty{{end}}" data-thread="{{.ID}}">
+        <details class="task-thread{{if not .Comments}} thread-empty{{end}}" data-thread="{{.ID}}" id="thread-{{.ID}}" data-unread="{{$.Unread.Count}}">
+          {{if $.Unread.Count}}
+          <summary class="unread-line">{{template "unreadpreview" $.Unread}}</summary>
+          {{else}}
           <summary class="small"><i class="ti ti-message me-1"></i>{{if .Comments}}{{plural .Comments "comment"}}{{else}}Comment{{end}}</summary>
+          {{end}}
           <div class="thread-body">
             {{range $.Thread}}
-            <div class="comment">
+            <div class="comment{{if index $.Unread.IDs .ID}} comment-new{{end}}" data-comment="{{.ID}}">
               <span class="avatar avatar-xs rounded-circle bg-{{color .AuthorID}}-lt">{{if .Author}}{{initial .Author}}{{else}}?{{end}}</span>
               <div class="flex-fill" style="min-width:0">
                 <div class="small">

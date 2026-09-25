@@ -102,6 +102,12 @@ font down to the icons the templates actually use (8KB rather than 844KB).
   the description, which anyone can overwrite, comments only add up; you can delete your own, nobody else's.
   A task shows how many it has everywhere, and the conversation itself on the list's page. New comments
   appear as they are written, and a half-typed one is never lost to someone else's change.
+- **Hard to miss.** Until you have read what someone else said, the task has a blue bar beside it and
+  quotes their latest comment with how many are new ("Sam: Friday works · 2 new"); the list has a dot in
+  the sidebar and says so on Overview; and the browser tab's title starts with the count, as in
+  "(3) Weekend in Lisbon". Opening the thread marks it read, on your other devices too, and what was
+  new stays picked out while you read it. Comments from before you joined a list don't count, and
+  neither do your own. On Today and My tasks the quote links straight to the conversation.
 - **Tags.** Put a word starting with `#` in a task's title or description, as in "Buy adapters #shopping",
   and it becomes a tag. Click one to show only the tasks with it; click it again to show them all. The
   list's tags are shown above its tasks, with how many each has. There is nothing to set up or tidy

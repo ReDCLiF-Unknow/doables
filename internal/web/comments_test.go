@@ -29,14 +29,15 @@ func TestTalkingAboutATask(t *testing.T) {
 		t.Errorf("the API returned %+v", c)
 	}
 
-	// Both show on the list page, in order, under the task.
+	// Both show on the list page, in order, under the task; Sam's is new to
+	// Alex, so the thread's toggle quotes it.
 	_, page := e.page(alex, listPage)
-	for _, want := range []string{"2 comments", "Which day works?", "Friday, 7pm", "Sam", `data-thread="1"`} {
+	for _, want := range []string{"1 new", "Which day works?", "Friday, 7pm", "Sam", `data-thread="1"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the list page does not show %q", want)
 		}
 	}
-	if strings.Index(page, "Which day works?") > strings.Index(page, "Friday, 7pm") {
+	if strings.Index(page, `comment-body">Which day works?`) > strings.Index(page, `comment-body">Friday, 7pm`) {
 		t.Error("the conversation is shown out of order")
 	}
 	// Your own comments say "You", and only they have a delete button.
@@ -48,11 +49,17 @@ func TestTalkingAboutATask(t *testing.T) {
 			strings.Count(page, `action="/comments/`))
 	}
 
-	// Elsewhere the row just says how many, without the thread.
+	// Elsewhere the row quotes what is new and links to the thread, and once
+	// it has been read, just says how many there are.
 	e.call("PATCH", "/api/tasks/1", alex, `{"due_date":"`+time.Now().Format("2006-01-02")+`"}`, nil)
 	_, today := e.page(alex, "/today")
-	if !strings.Contains(today, "2 comments") {
-		t.Error("Today does not say the task has comments")
+	if !strings.Contains(today, `href="`+listPage+`#thread-1"`) || !strings.Contains(today, "1 new") {
+		t.Error("Today does not point Alex to Sam's new comment")
+	}
+	e.call("GET", "/api/tasks/1/comments", alex, "", nil)
+	_, today = e.page(alex, "/today")
+	if !strings.Contains(today, "2 comments") || strings.Contains(today, "1 new") {
+		t.Error("once read, Today should just say the task has 2 comments")
 	}
 	if strings.Contains(today, `action="/tasks/1/comments"`) {
 		t.Error("Today shows a comment box; threads belong on the list's own page")

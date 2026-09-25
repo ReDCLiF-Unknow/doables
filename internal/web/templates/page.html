@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{if eq .View "today"}}Today · {{else if eq .View "mine"}}My tasks · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
+  <title>{{with .UnreadTotal}}({{.}}) {{end}}{{if eq .View "today"}}Today · {{else if eq .View "mine"}}My tasks · {{else}}{{with .Current}}{{.Name}} · {{end}}{{end}}Doables</title>
   {{template "assets"}}
 </head>
 <body>
@@ -62,6 +62,7 @@
               <span class="nav-link-icon d-md-none d-lg-inline-block"><i class="ti ti-list-check"></i></span>
               <span class="nav-link-title text-truncate">{{.Name}}</span>
               <span class="ms-auto d-flex align-items-center gap-2">
+                {{with index $.UnreadByList .ID}}<span class="unread-dot" title="{{plural . "new comment"}}"></span>{{end}}
                 {{if gt .Members 1}}<i class="ti ti-users text-secondary" title="Shared with {{.Members}} people"></i>{{end}}
                 {{if .Open}}<span class="badge bg-blue-lt text-blue">{{.Open}}</span>{{else if .Total}}<i class="ti ti-circle-check-filled text-green"></i>{{end}}
               </span>
@@ -382,7 +383,7 @@
                   <span class="avatar bg-blue-lt text-blue me-3"><i class="ti ti-list-check fs-2"></i></span>
                   <div class="flex-fill text-truncate">
                     <div class="fw-bold text-truncate">{{.Name}}</div>
-                    <div class="text-secondary small">{{.Open}} open · {{.Done}} done{{if gt .Members 1}} · <i class="ti ti-users"></i> {{.Members}}{{end}}{{if .Public}} · public{{end}}</div>
+                    <div class="text-secondary small">{{.Open}} open · {{.Done}} done{{if gt .Members 1}} · <i class="ti ti-users"></i> {{.Members}}{{end}}{{if .Public}} · public{{end}}{{with index $.UnreadByList .ID}} · <span class="text-blue fw-medium"><i class="ti ti-message"></i> {{plural . "new comment"}}</span>{{end}}</div>
                   </div>
                   <span class="fw-bold">{{.Percent}}%</span>
                 </div>
@@ -610,7 +611,37 @@
       var again = document.querySelector('details[data-thread="' + boxThread + '"] input[name=body]');
       if (again && document.activeElement !== again) again.focus();
     }
+    Object.keys(stillNew).forEach(function (id) {
+      var c = document.querySelector('.comment[data-comment="' + id + '"]');
+      if (c) c.classList.add('comment-new');
+    });
+    // Something said while its thread is open on screen has been seen.
+    document.querySelectorAll('details[data-thread][open]').forEach(function (d) {
+      if (d.getAttribute('data-unread') !== '0') markSeen(d);
+    });
   }
+
+  // Comments that were new when their thread was opened keep standing out
+  // until the page is left, though the server now knows they have been seen.
+  var stillNew = {};
+  var seeing = {};
+
+  // markSeen tells the server a thread has been read, which clears its badge
+  // here and on the reader's other devices.
+  function markSeen(thread) {
+    var id = thread.getAttribute('data-thread');
+    if (seeing[id] || thread.getAttribute('data-unread') === '0') return;
+    seeing[id] = true;
+    thread.querySelectorAll('.comment-new').forEach(function (c) { stillNew[c.getAttribute('data-comment')] = true; });
+    post('/tasks/' + id + '/seen', new URLSearchParams({ next: location.pathname + location.search }))
+      .then(function (html) { if (html !== null) apply(html); })
+      .catch(function () {})
+      .then(function () { delete seeing[id]; });
+  }
+
+  document.addEventListener('toggle', function (e) {
+    if (e.target.matches && e.target.matches('details[data-thread]') && e.target.open) markSeen(e.target);
+  }, true);
 
   function flushPending() {
     if (pending) { pending = false; refresh(); }
@@ -857,6 +888,17 @@
     var titleBox = document.querySelector('#add-task-form input[name=title]');
     if (titleBox) titleBox.focus();
   }
+
+  // Following a comment preview (#thread-12) opens that thread, whether it
+  // came from another page or this one.
+  function openThreadFromHash() {
+    var thread = /^#thread-[0-9]+$/.test(location.hash) && document.getElementById(location.hash.slice(1));
+    if (!thread) return;
+    thread.open = true;
+    thread.closest('.task-row').scrollIntoView({ block: 'center' });
+  }
+  openThreadFromHash();
+  window.addEventListener('hashchange', openThreadFromHash);
 
   // Re-open a dialog when the URL asks for one (#share after sharing actions, #profile from old /me links).
   var wanted = { '#share': '[data-bs-target="#share-modal"]', '#profile': '#profile-open' }[location.hash];
