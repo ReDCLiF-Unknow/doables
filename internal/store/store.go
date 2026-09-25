@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -95,6 +96,9 @@ type Task struct {
 	Comments int `json:"comments,omitempty"`
 	// Tags are the #words in the title and description (see FindTags).
 	Tags []string `json:"tags,omitempty"`
+	// DoneAt is when it was ticked off, nil while it is open and for tasks
+	// finished before Doables recorded the time.
+	DoneAt *time.Time `json:"done_at,omitempty"`
 }
 
 // Comment is one remark on a task: who said what, and when. Unlike the
@@ -119,6 +123,24 @@ type TaskUpdate struct {
 type Store struct {
 	db     *sql.DB
 	notify func(userIDs []int64, all bool)
+
+	// lastDone is the finish time most recently given to a task. Finish times
+	// order a list's finished tasks, so two ticked in the same instant (the
+	// clock on Windows moves in steps) must still get different ones.
+	doneMu   sync.Mutex
+	lastDone time.Time
+}
+
+// finishTime is now, or just after the last finish time handed out.
+func (s *Store) finishTime() time.Time {
+	s.doneMu.Lock()
+	defer s.doneMu.Unlock()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if !now.After(s.lastDone) {
+		now = s.lastDone.Add(time.Microsecond)
+	}
+	s.lastDone = now
+	return now
 }
 
 const schema = `
@@ -732,18 +754,31 @@ const taskSelect = `
 	SELECT t.id, t.list_id, l.name, t.title, t.description, t.done, t.created_at,
 	       COALESCE(t.due_date, ''), COALESCE(a.name, ''), COALESCE(d.name, ''),
 	       COALESCE(t.assigned_to, 0), COALESCE(g.name, ''),
-	       (SELECT COUNT(*) FROM comments c WHERE c.task_id = t.id)
+	       (SELECT COUNT(*) FROM comments c WHERE c.task_id = t.id),
+	       CASE WHEN t.done THEN t.done_at END
 	FROM tasks t
 	JOIN lists l ON l.id = t.list_id
 	LEFT JOIN users a ON a.id = t.added_by
 	LEFT JOIN users d ON d.id = t.done_by
 	LEFT JOIN users g ON g.id = t.assigned_to `
 
+// doneAtLayout is how tasks.done_at is stored: UTC, to the microsecond, and
+// fixed width so that sorting the text sorts the times.
+const doneAtLayout = "2006-01-02 15:04:05.000000"
+
 func scanTask(sc interface{ Scan(...any) error }) (Task, error) {
 	var t Task
+	var doneAt sql.NullString
 	err := sc.Scan(&t.ID, &t.ListID, &t.ListName, &t.Title, &t.Description, &t.Done, &t.CreatedAt, &t.DueDate, &t.AddedBy, &t.DoneBy,
-		&t.AssigneeID, &t.Assignee, &t.Comments)
+		&t.AssigneeID, &t.Assignee, &t.Comments, &doneAt)
 	t.Tags = TagsIn(t.Title, t.Description)
+	if doneAt.Valid {
+		// Without a fraction in the layout, Parse takes any number of digits,
+		// so milliseconds written by the first release that kept this work too.
+		if at, perr := time.Parse(time.DateTime, doneAt.String); perr == nil {
+			t.DoneAt = &at
+		}
+	}
 	return t, err
 }
 
@@ -878,11 +913,12 @@ func (s *Store) SetDone(id int64, done bool, userID int64) (Task, error) {
 	if done {
 		by = nullID(userID)
 	}
-	// done_at is to the millisecond, so tasks ticked off in quick succession
-	// still come back in the order they were finished.
-	if err := s.affected(s.db.Exec(`UPDATE tasks SET done = ?, done_by = ?,
-		done_at = CASE WHEN ? THEN strftime('%Y-%m-%d %H:%M:%f', 'now') END
-		WHERE id = ? AND deleted_at IS NULL`, done, by, done, id)); err != nil {
+	var at any
+	if done {
+		at = s.finishTime().Format(doneAtLayout)
+	}
+	if err := s.affected(s.db.Exec(`UPDATE tasks SET done = ?, done_by = ?, done_at = ?
+		WHERE id = ? AND deleted_at IS NULL`, done, by, at, id)); err != nil {
 		return Task{}, err
 	}
 	t, err := s.Task(id)

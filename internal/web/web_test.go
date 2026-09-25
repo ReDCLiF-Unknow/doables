@@ -18,6 +18,7 @@ type env struct {
 	t   *testing.T
 	srv *httptest.Server
 	st  *store.Store // for making the kind of data only an old database has
+	app *Server      // for moving its clock on
 }
 
 func newEnv(t *testing.T) *env {
@@ -26,9 +27,10 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(New(s))
+	app := New(s)
+	srv := httptest.NewServer(app)
 	t.Cleanup(func() { srv.Close(); s.Close() })
-	return &env{t: t, srv: srv, st: s}
+	return &env{t: t, srv: srv, st: s, app: app}
 }
 
 // legacyPublicList makes an ownerless list, the sort that exists in databases

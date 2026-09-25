@@ -110,9 +110,14 @@ font down to the icons the templates actually use (8KB rather than 844KB).
   "issue #12" are not tags.
 - **Due dates.** Optional on every task. Tasks show a badge ("Today", "Tomorrow", red "Overdue · Sep 17"), and
   open tasks sort soonest-due first.
-- **Long lists.** Open tasks come first, then finished ones, most recently finished first. A list shows 50
-  tasks at a time with **Show 50 more** at the bottom, which loads in place; live updates keep however many
-  you have opened. A list used for a year stays quick, however many finished tasks it has piled up.
+- **To do and History.** A list's **To do** tab is what is left, plus whatever was finished in the last
+  24 hours, under its own heading, so everyone sees what the others just got done and a mistaken tick can
+  be taken back. A day after it was ticked off, a task moves to **History**: every finished task, most
+  recently finished first, under a heading for each day, with who finished it. Nothing is deleted; untick
+  one in History and it is back on To do. The day is counted from when it was ticked, so something finished
+  at 23:55 does not vanish five minutes later.
+- **Long lists.** A list shows 50 tasks at a time with **Show 50 more** at the bottom, which loads in place;
+  live updates keep however many you have opened.
 - **Today view.** The **Today** item in the sidebar gathers every open task with a due date across all your
   lists: **Overdue**, **Today** and **Next 7 days**. Its badge counts what is overdue or due today (red when
   something is overdue). "Today" is the server's local date.
@@ -169,6 +174,7 @@ doables new-list "Groceries"
 doables add 1 "Buy milk" -d "2 litres" --due 2026-10-01
 doables tasks 1
 doables tasks 1 --tag shopping   # only the tasks tagged #shopping
+doables tasks 1 --history        # everything finished, most recently first
 doables edit 3 --title "Buy oat milk" --due 2026-10-05   # only the flags you give are changed
 doables edit 3 --due ""                                  # clear the due date
 doables assign 3 2    # give task 3 to member 2 (see `doables members`)
@@ -213,7 +219,7 @@ Dates are `YYYY-MM-DD`.
 | DELETE | `/api/lists/{id}` | owner only; the list can be restored for a day |
 | POST | `/api/lists/{id}/restore` | owner only, within a day of deleting it |
 | GET | `/api/lists/{id}/members` | |
-| GET | `/api/lists/{id}/tasks` | `?tag=shopping` for only the tasks with that tag; each task lists its `tags` |
+| GET | `/api/lists/{id}/tasks` | every task; `?view=todo` for the To do tab (open, and finished in the last day), `?view=history` for finished ones; `?tag=shopping` for only that tag. Each task lists its `tags`, and `done_at` once finished |
 | POST | `/api/lists/{id}/tasks` | `{"title": "...", "description": "...", "due_date": "..."}` |
 | PATCH | `/api/tasks/{id}` | any of `{"done": true, "title": "...", "description": "...", "due_date": "...", "assignee_id": 2}`; `"due_date": ""` clears the date and `"assignee_id": 0` clears the assignee |
 | DELETE | `/api/tasks/{id}` | moves the task to the trash |

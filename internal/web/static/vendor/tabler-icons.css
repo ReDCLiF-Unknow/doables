@@ -22,7 +22,6 @@
 .ti-align-left:before{content:"\ea09"}
 .ti-calendar-event:before{content:"\ea52"}
 .ti-check:before{content:"\ea5e"}
-.ti-checkbox:before{content:"\eba6"}
 .ti-checklist:before{content:"\f074"}
 .ti-chevron-down:before{content:"\ea5f"}
 .ti-circle-check-filled:before{content:"\f704"}
@@ -33,6 +32,7 @@
 .ti-dots:before{content:"\ea95"}
 .ti-eye:before{content:"\ea9a"}
 .ti-hash:before{content:"\eabc"}
+.ti-history:before{content:"\ebea"}
 .ti-key:before{content:"\eac7"}
 .ti-layout-dashboard:before{content:"\f02c"}
 .ti-list-check:before{content:"\eb6a"}

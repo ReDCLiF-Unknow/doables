@@ -98,20 +98,69 @@ var funcs = template.FuncMap{
 	"add":      func(a, b int) int { return a + b },
 }
 
-// listURL is the address of a list showing only the tasks with tag (none when
-// it is empty) that are open, done or either ("all").
+// listURL is the address of a list's To do or History tab ("todo" or
+// "history"), showing only the tasks with tag when it is not empty.
 func listURL(listID int64, tag, filter string) string {
 	q := url.Values{}
 	if tag != "" {
 		q.Set("tag", tag)
 	}
-	if filter == "open" || filter == "done" {
+	if filter == "history" {
 		q.Set("filter", filter)
 	}
 	if len(q) == 0 {
 		return listPath(listID)
 	}
 	return listPath(listID) + "?" + q.Encode()
+}
+
+// FinishedStays is how long a finished task stays on its list's To do tab
+// before it moves to History: long enough for everyone to see it was done,
+// and to take back a tick by mistake. It is counted from the moment it was
+// ticked, so something finished at 23:55 does not vanish five minutes later.
+const FinishedStays = 24 * time.Hour
+
+// onToDo reports whether a task belongs on its list's To do tab. A task
+// finished before Doables recorded when is long gone from it.
+func onToDo(t store.Task, now time.Time) bool {
+	return !t.Done || (t.DoneAt != nil && now.Sub(*t.DoneAt) < FinishedStays)
+}
+
+// byDayFinished splits finished tasks, newest first, into one group a day.
+func byDayFinished(tasks []store.Task, now time.Time) []taskGroup {
+	var groups []taskGroup
+	for _, t := range tasks {
+		title := "Earlier" // finished before Doables recorded when
+		if t.DoneAt != nil {
+			title = dayTitle(*t.DoneAt, now)
+		}
+		if len(groups) == 0 || groups[len(groups)-1].Title != title {
+			groups = append(groups, taskGroup{Title: title})
+		}
+		g := &groups[len(groups)-1]
+		g.Tasks = append(g.Tasks, t)
+	}
+	return groups
+}
+
+// dayTitle names the day t fell on, in the server's own zone like "today"
+// everywhere else: "Today", "Yesterday", "Monday" within the week, then
+// "Mon, Sep 22", and "Sep 22, 2025" in another year.
+func dayTitle(t, now time.Time) string {
+	t, now = t.In(time.Local), now.In(time.Local)
+	day := func(x time.Time) time.Time { y, m, d := x.Date(); return time.Date(y, m, d, 0, 0, 0, 0, time.Local) }
+	switch days := int(day(now).Sub(day(t)).Hours()/24 + 0.5); {
+	case days <= 0:
+		return "Today"
+	case days == 1:
+		return "Yesterday"
+	case days < 7:
+		return t.Format("Monday")
+	case t.Year() == now.Year():
+		return t.Format("Mon, Jan 2")
+	default:
+		return t.Format("Jan 2, 2006")
+	}
 }
 
 // pageSize is how many tasks a list page shows before offering more.
@@ -264,6 +313,8 @@ type Server struct {
 	// demoSeed is set when this server is a public demo: it fills a new
 	// visitor's sandbox and returns the list to show them first.
 	demoSeed func(store.User) (int64, error)
+	// now is the time, which tests move on to see a day pass.
+	now func() time.Time
 }
 
 // SetDemo turns the server into a public demo. Everyone who picks a name is
@@ -279,6 +330,7 @@ func New(s *store.Store) *Server {
 		hub:        newHub(),
 		signups:    newLimiter(signupBurst, signupRefill),
 		sameOrigin: http.NewCrossOriginProtection(),
+		now:        time.Now,
 	}
 	s.SetNotifier(srv.hub.publish)
 	srv.routes()
@@ -690,12 +742,13 @@ type pageData struct {
 	Lists        []store.List
 	Current      *store.List
 	Tasks        []store.Task
-	Groups       []taskGroup // Today view sections
-	Filter       string      // "all", "open" or "done"
+	Groups       []taskGroup // Today's sections, or History's days
+	Filter       string      // a list's tab: "todo" or "history"
 	Tag          string      // only tasks with this #tag are shown, when set
 	TagCounts    []store.TagCount
-	// Count is the tasks with the tag, if any, for the All/Open/Done tabs.
-	Count struct{ All, Open, Done int }
+	// Count is the tasks with the tag, if any: open ones for the To do tab,
+	// finished ones for History.
+	Count struct{ Open, History int }
 	// More is how many tasks are not shown yet, a list being shown pageSize
 	// at a time; MoreURL shows the next ones as well.
 	More      int
@@ -820,44 +873,51 @@ func (s *Server) pageList(w http.ResponseWriter, r *http.Request, u *store.User)
 		s.fail(w, err)
 		return
 	}
+	// A list has two tabs. To do is what is left, plus what was finished in
+	// the last day, so everyone sees what the others just got done and can
+	// take back a mistaken tick. History is everything ever finished.
 	filter := r.URL.Query().Get("filter")
-	if filter != "open" && filter != "done" {
-		filter = "all"
+	if filter == "done" {
+		filter = "history" // what the Done tab was, before History
 	}
-	// The tags come from every task, so the row of them above the list does
-	// not shrink to the one tag being shown.
-	d.TagCounts = store.CountTags(tasks)
+	if filter != "history" {
+		filter = "todo"
+	}
+	now := s.now()
+	var shown []store.Task
+	for _, t := range tasks {
+		if (filter == "history" && t.Done) || (filter == "todo" && onToDo(t, now)) {
+			shown = append(shown, t)
+		}
+	}
+	// The tags are the tab's, so each one's count is what clicking it shows,
+	// but from before filtering by a tag, so the row of them stays whole.
+	d.TagCounts = store.CountTags(shown)
 	if tag, ok := store.NormalizeTag(r.URL.Query().Get("tag")); ok {
-		d.Tag, tasks = tag, store.WithTag(tasks, tag)
+		d.Tag, tasks, shown = tag, store.WithTag(tasks, tag), store.WithTag(shown, tag)
 	}
 	for _, t := range tasks {
 		if t.Done {
-			d.Count.Done++
+			d.Count.History++
 		} else {
 			d.Count.Open++
 		}
 	}
-	d.Count.All = len(tasks)
-	if filter != "all" {
-		kept := tasks[:0]
-		for _, t := range tasks {
-			if t.Done == (filter == "done") {
-				kept = append(kept, t)
-			}
-		}
-		tasks = kept
-	}
+	tasks = shown
 	// Every row carries its own menus and forms, a few KB each, and every
 	// change anyone makes sends the page again to everyone looking at it, so
 	// a list a year old with a thousand finished tasks would be megabytes.
 	// Show the first pageSize, and more on request (?show=).
-	shown := pageSize
-	if n, err := strconv.Atoi(r.URL.Query().Get("show")); err == nil && n > shown {
-		shown = n
+	limit := pageSize
+	if n, err := strconv.Atoi(r.URL.Query().Get("show")); err == nil && n > limit {
+		limit = n
 	}
-	if len(tasks) > shown {
-		d.More, tasks = len(tasks)-shown, tasks[:shown]
-		d.MoreURL = withShow(listURL(id, d.Tag, filter), shown+pageSize)
+	if len(tasks) > limit {
+		d.More, tasks = len(tasks)-limit, tasks[:limit]
+		d.MoreURL = withShow(listURL(id, d.Tag, filter), limit+pageSize)
+	}
+	if filter == "history" {
+		d.Groups = byDayFinished(tasks, now)
 	}
 	d.Current, d.Tasks, d.Filter, d.IsOwner = &cur, tasks, filter, canManage(cur, u.ID)
 	if d.Threads, err = s.store.ListComments(id); err != nil {
@@ -1316,6 +1376,11 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 		s.respond(w, 0, nil, err)
 		return
 	}
+	view := r.URL.Query().Get("view")
+	if view != "" && view != "todo" && view != "history" {
+		writeError(w, http.StatusBadRequest, `view is "todo" (open, and finished in the last day) or "history" (finished); leave it out for every task`)
+		return
+	}
 	var tag string
 	if q := r.URL.Query().Get("tag"); q != "" {
 		var ok bool
@@ -1327,6 +1392,13 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := s.store.Tasks(id)
 	if tag != "" {
 		tasks = store.WithTag(tasks, tag)
+	}
+	now := s.now()
+	switch view {
+	case "todo":
+		tasks = slices.DeleteFunc(tasks, func(t store.Task) bool { return !onToDo(t, now) })
+	case "history":
+		tasks = slices.DeleteFunc(tasks, func(t store.Task) bool { return !t.Done })
 	}
 	s.respond(w, http.StatusOK, tasks, err)
 }

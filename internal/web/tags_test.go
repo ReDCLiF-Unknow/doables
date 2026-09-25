@@ -39,20 +39,20 @@ func TestTagsFilterAList(t *testing.T) {
 		t.Error("?tag=shopping did not show exactly the two shopping tasks")
 	}
 	for _, want := range []string{
-		`All <span class="badge bg-secondary-lt ms-1">2</span>`,
-		`Open <span class="badge bg-secondary-lt ms-1">1</span>`,
-		`href="` + listPage + `?filter=open&amp;tag=shopping"`, // the Open tab keeps the tag
-		`href="` + listPage + `?tag=beach"`,                    // other tags are still offered
-		`<a class="hashtag active" href="` + listPage + `"`,    // and a second click undoes the filter
+		`To do <span class="badge bg-secondary-lt ms-1">1</span>`,
+		`History <span class="badge bg-secondary-lt ms-1">1</span>`,
+		`href="` + listPage + `?filter=history&amp;tag=shopping"`, // the History tab keeps the tag
+		`href="` + listPage + `?tag=beach"`,                       // other tags are still offered
+		`<a class="hashtag active" href="` + listPage + `"`,       // and a second click undoes the filter
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the filtered page does not contain %s", want)
 		}
 	}
-	// Filtering by open as well narrows it again.
-	_, page = e.page(alex, listPage+"?tag=shopping&filter=open")
-	if !strings.Contains(page, "Buy adapters") || strings.Contains(page, "Sunscreen") {
-		t.Error("open tasks tagged #shopping should be just the adapters")
+	// History narrows it again, to the finished ones.
+	_, page = e.page(alex, listPage+"?tag=shopping&filter=history")
+	if strings.Contains(page, "Buy adapters") || !strings.Contains(page, "Sunscreen") {
+		t.Error("finished tasks tagged #shopping should be just the sunscreen")
 	}
 	// A tag nobody uses any more says so rather than showing an empty list.
 	_, page = e.page(alex, listPage+"?tag=gone")

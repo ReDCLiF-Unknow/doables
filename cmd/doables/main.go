@@ -119,14 +119,20 @@ func newRoot() *cobra.Command {
 
 	// tasks
 	var tag string
-	tasks := &cobra.Command{Use: "tasks LIST_ID", Short: "Show the tasks in a list", Args: cobra.ExactArgs(1),
-		Example: "  doables tasks 3\n  doables tasks 3 --tag shopping",
+	var history bool
+	tasks := &cobra.Command{Use: "tasks LIST_ID", Short: "Show what is left to do in a list, or its history", Args: cobra.ExactArgs(1),
+		Long: "Show what is left to do in a list, and what was finished in the last day.\n" +
+			"Finished tasks move to the list's history a day after they are ticked off; --history shows them.",
+		Example: "  doables tasks 3\n  doables tasks 3 --tag shopping\n  doables tasks 3 --history",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
 			if err != nil {
 				return err
 			}
-			req := client.R()
+			req := client.R().SetQueryParam("view", "todo")
+			if history {
+				req.SetQueryParam("view", "history")
+			}
 			if tag != "" {
 				req.SetQueryParam("tag", tag)
 			}
@@ -137,6 +143,7 @@ func newRoot() *cobra.Command {
 			return printTasks(cmd, ts, false)
 		}}
 	tasks.Flags().StringVar(&tag, "tag", "", "only the tasks tagged with this #tag (the # is optional)")
+	tasks.Flags().BoolVar(&history, "history", false, "show every finished task, most recently finished first")
 
 	mine := &cobra.Command{Use: "mine", Short: "Show the open tasks assigned to you", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

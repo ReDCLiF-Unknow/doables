@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // rows counts the tasks a page shows.
@@ -71,14 +72,16 @@ func TestLongListsAreShownAPageAtATime(t *testing.T) {
 		}
 	}
 
-	// A tag or Open/Done filter is kept when asking for more.
-	_, page = e.page(alex, listPage+"?tag=food&filter=done")
-	if n := rows(page); n != pageSize || !strings.Contains(page, `href="`+listPage+`?filter=done&amp;tag=food&amp;show=100"`) {
-		t.Errorf("done #food tasks: %d shown, want %d with a link that keeps both filters", n, pageSize)
+	// A tag or the History tab is kept when asking for more.
+	_, page = e.page(alex, listPage+"?tag=food&filter=history")
+	if n := rows(page); n != pageSize || !strings.Contains(page, `href="`+listPage+`?filter=history&amp;tag=food&amp;show=100"`) {
+		t.Errorf("finished #food tasks: %d shown, want %d with a link that keeps both filters", n, pageSize)
 	}
-	// A short list offers nothing.
-	_, page = e.page(alex, listPage+"?filter=open")
+	// A day later the finished ones have moved to History, and what is left
+	// is short enough to show without offering more.
+	e.app.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	_, page = e.page(alex, listPage)
 	if rows(page) != 10 || strings.Contains(page, `" data-more>`) {
-		t.Error("the ten open tasks should all show, with nothing more to offer")
+		t.Errorf("a day later To do shows %d tasks, want the ten open ones and nothing more to offer", rows(page))
 	}
 }

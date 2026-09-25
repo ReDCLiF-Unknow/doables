@@ -307,9 +307,8 @@
         <div class="card" data-live="tasks">
           <div class="card-header">
             <ul class="nav nav-pills card-header-pills">
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "all"}} active{{end}}" href="{{listURL .ID $.Tag "all"}}">All <span class="badge bg-secondary-lt ms-1">{{$.Count.All}}</span></a></li>
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "open"}} active{{end}}" href="{{listURL .ID $.Tag "open"}}">Open <span class="badge bg-secondary-lt ms-1">{{$.Count.Open}}</span></a></li>
-              <li class="nav-item"><a class="nav-link{{if eq $.Filter "done"}} active{{end}}" href="{{listURL .ID $.Tag "done"}}">Done <span class="badge bg-secondary-lt ms-1">{{$.Count.Done}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "todo"}} active{{end}}" href="{{listURL .ID $.Tag "todo"}}">To do <span class="badge bg-secondary-lt ms-1">{{$.Count.Open}}</span></a></li>
+              <li class="nav-item"><a class="nav-link{{if eq $.Filter "history"}} active{{end}}" href="{{listURL .ID $.Tag "history"}}"><i class="ti ti-history me-1"></i>History <span class="badge bg-secondary-lt ms-1">{{$.Count.History}}</span></a></li>
             </ul>
           </div>
           {{if $.TagCounts}}
@@ -323,25 +322,39 @@
           </div>
           {{end}}
           <div class="list-group list-group-flush">
-            {{range $.Tasks}}{{template "taskrow" (row $ .)}}
+            {{if eq $.Filter "history"}}
+              <!-- History: everything finished, newest first, a heading a day -->
+              {{range $.Groups}}
+              <div class="list-group-header list-day">{{.Title}}<span class="ms-2 fw-normal">{{len .Tasks}}</span></div>
+              {{range .Tasks}}{{template "taskrow" (row $ .)}}{{end}}
+              {{end}}
             {{else}}
+              {{$finished := false}}
+              {{range $.Tasks}}
+              {{if and .Done (not $finished)}}{{$finished = true}}
+              <div class="list-group-header list-day">Finished in the last day<span class="list-day-note ms-2">· moves to History a day after it's ticked</span></div>
+              {{end}}
+              {{template "taskrow" (row $ .)}}
+              {{end}}
+            {{end}}
+            {{if not $.Tasks}}
             <div class="empty">
-              {{if and $.Tag (not $.Count.All)}}
+              {{if and $.Tag (not (add $.Count.Open $.Count.History))}}
               <div class="empty-icon"><i class="ti ti-hash fs-1"></i></div>
               <p class="empty-title">Nothing tagged #{{$.Tag}}</p>
               <p class="empty-subtitle text-secondary">No task here mentions it any more. <a href="{{listURL .ID "" $.Filter}}">Show every task</a></p>
-              {{else if eq $.Filter "all"}}
+              {{else if eq $.Filter "history"}}
+              <div class="empty-icon"><i class="ti ti-history fs-1"></i></div>
+              <p class="empty-title">Nothing finished yet</p>
+              <p class="empty-subtitle text-secondary">Ticked-off tasks stay on To do for a day, so everyone sees they were done, then move here.</p>
+              {{else if $.Count.History}}
+              <div class="empty-icon"><i class="ti ti-confetti fs-1"></i></div>
+              <p class="empty-title">All caught up!</p>
+              <p class="empty-subtitle text-secondary">Everything finished more than a day ago is in <a href="{{listURL .ID $.Tag "history"}}">History</a>.</p>
+              {{else}}
               <div class="empty-icon"><i class="ti ti-mood-smile fs-1"></i></div>
               <p class="empty-title">Nothing here yet</p>
               <p class="empty-subtitle text-secondary">Add your first task above. Words starting with # become tags, like <span class="hashtag">#shopping</span>, so you can show just those tasks.</p>
-              {{else if eq $.Filter "open"}}
-              <div class="empty-icon"><i class="ti ti-confetti fs-1"></i></div>
-              <p class="empty-title">All caught up!</p>
-              <p class="empty-subtitle text-secondary">No open tasks in this list.</p>
-              {{else}}
-              <div class="empty-icon"><i class="ti ti-checkbox fs-1"></i></div>
-              <p class="empty-title">Nothing done yet</p>
-              <p class="empty-subtitle text-secondary">Tick a task to move it here.</p>
               {{end}}
             </div>
             {{end}}

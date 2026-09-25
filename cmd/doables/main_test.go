@@ -253,3 +253,20 @@ func TestCLIFiltersByTag(t *testing.T) {
 		t.Errorf("an invalid tag gave %v:\n%s", err, out)
 	}
 }
+
+func TestCLIShowsToDoAndHistory(t *testing.T) {
+	c := newCLI(t)
+	c.signIn("Alex")
+	c.run("new-list", "Home")
+	c.run("add", "1", "Milk")
+	c.run("add", "1", "Bread")
+	c.run("done", "1")
+
+	// Just finished, Milk is still on To do, and already in the history.
+	contains(t, "tasks", c.run("tasks", "1"), "Milk")
+	history := c.run("tasks", "1", "--history")
+	contains(t, "tasks --history", history, "Milk")
+	if strings.Contains(history, "Bread") {
+		t.Errorf("the history lists an open task:\n%s", history)
+	}
+}
