@@ -31,6 +31,7 @@
     .task-row { transition: background .15s; }
     .task-row:hover { background: var(--tblr-bg-surface-secondary); }
     .task-row .task-actions { opacity: 0; transition: opacity .15s; }
+    .task-more { display: none; }
     .task-row:hover .task-actions, .task-row:focus-within .task-actions { opacity: 1; }
     @media (hover: none) { .task-row .task-actions { opacity: 1; } }
     .task-done .task-title { text-decoration: line-through; color: var(--tblr-secondary); }
@@ -180,6 +181,24 @@
       .row > .task-thread-col { padding-left: calc(1.6rem + 1.5rem); }
       .thread-body { padding-left: .5rem; }
       .dropdown-item { padding: .75rem 1rem; }
+      /* A task's actions: one "more" button, opening a menu of them */
+      .task-row .task-more { display: inline-flex; }
+      .task-actions-wrap { position: relative; }
+      .task-row .task-actions { display: none !important; }
+      .task-row.menu-open .task-actions {
+        display: flex !important; flex-direction: column; align-items: stretch; gap: 0 !important; opacity: 1;
+        position: absolute; right: 0; top: calc(100% + .25rem); z-index: 1040; min-width: 13rem; padding: .35rem 0;
+        background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow-dropdown, 0 16px 24px rgba(0,0,0,.12)); }
+      .task-row.menu-open .task-actions .btn {
+        width: 100%; height: auto; min-height: 44px; justify-content: flex-start; gap: .75rem;
+        padding: 0 1rem; border-radius: 0; font-size: .9375rem; }
+      .task-row.menu-open .task-actions .btn::after { content: attr(data-label); font-weight: 400; }
+      /* a light highlight, like any menu, rather than the dark pressed button */
+      .task-row.menu-open .task-actions .btn-ghost-secondary:is(:hover, :active, .show) {
+        background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); }
+      .task-row.menu-open .task-actions .btn .avatar { width: 1.25rem; height: 1.25rem; font-size: .65rem; }
+      .task-row.menu-open .task-actions form, .task-row.menu-open .task-actions .dropdown { width: 100%; }
       .tag-bar .hashtag { padding: .45rem .75rem; }
       /* quick-add: just the title and a button; description and date sit behind the details toggle */
       #add-task-form .add-extra { display: none; }
@@ -228,14 +247,19 @@
       <span class="badge {{dueClass .DueDate $.Today .Done}}" title="Due {{.DueDate}}"><i class="ti ti-calendar-event me-1"></i>{{dueLabel .DueDate $.Today .Done}}</span>
     </div>
     {{end}}
-    <div class="col-auto task-actions d-flex gap-1">
+    <!-- On a phone the actions fold away behind one "more" button, so the
+         title keeps the width; the menu it opens is these same buttons. -->
+    <div class="col-auto task-actions-wrap">
+    <button type="button" class="btn btn-icon btn-ghost-secondary task-more" aria-expanded="false" aria-controls="actions-{{.ID}}" title="More" aria-label="Actions for this task"><i class="ti ti-dots"></i></button>
+    <div class="task-actions d-flex gap-1" id="actions-{{.ID}}">
       {{if $.ShowThread}}
-      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-open-thread="{{.ID}}" title="Comment" aria-label="Comment on this task"><i class="ti ti-message"></i></button>
+      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-open-thread="{{.ID}}" title="Comment" aria-label="Comment on this task" data-label="Comment"><i class="ti ti-message"></i></button>
       {{end}}
       {{if $.Members}}
       <div class="dropdown">
         <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-bs-toggle="dropdown" aria-expanded="false"
-                title="{{if .AssigneeID}}For {{.Assignee}}{{else}}Give this to someone{{end}}" aria-label="Assign this task">
+                title="{{if .AssigneeID}}For {{.Assignee}}{{else}}Give this to someone{{end}}" aria-label="Assign this task"
+                data-label="{{if .AssigneeID}}For {{.Assignee}}{{else}}Give to someone{{end}}">
           {{if .AssigneeID}}<span class="avatar avatar-xs rounded-circle bg-{{color .AssigneeID}}-lt">{{initial .Assignee}}</span>
           {{else}}<i class="ti ti-user-plus"></i>{{end}}
         </button>
@@ -256,11 +280,12 @@
         </div>
       </div>
       {{end}}
-      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-edit-toggle title="Edit task" aria-label="Edit task"><i class="ti ti-pencil"></i></button>
+      <button type="button" class="btn btn-icon btn-sm btn-ghost-secondary" data-edit-toggle title="Edit task" aria-label="Edit task" data-label="Edit"><i class="ti ti-pencil"></i></button>
       <form method="post" action="/tasks/{{.ID}}/delete" data-inplace data-undo>
         <input type="hidden" name="next" value="{{$.Path}}">
-        <button type="submit" class="btn btn-icon btn-sm btn-ghost-danger" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>
+        <button type="submit" class="btn btn-icon btn-sm btn-ghost-danger" title="Delete task" aria-label="Delete task" data-label="Delete"><i class="ti ti-trash"></i></button>
       </form>
+    </div>
     </div>
     {{if $.ShowThread}}
     <!-- The conversation gets a line of its own under the task, so on a phone

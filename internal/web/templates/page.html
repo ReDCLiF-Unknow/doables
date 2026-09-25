@@ -570,8 +570,11 @@
     // after posting that is exactly where the cursor rests: treating it as
     // busy would stop replies appearing until you clicked somewhere else.
     var idleBox = commentBox(a) && a.value === '';
-    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && !idleBox) return true;
-    if (el.querySelector('.dropdown-menu.show')) return true; // a menu is open: don't yank it away
+    // A field that is no longer on screen (an edit cancelled with Esc) is not
+    // being typed in, even if the cursor was left behind in it.
+    var shown = a && a.offsetParent !== null;
+    if (a && shown && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && !idleBox) return true;
+    if (el.querySelector('.dropdown-menu.show, .task-row.menu-open')) return true; // a menu is open: don't yank it away
     return !!el.querySelector('.is-editing');
   }
 
@@ -770,6 +773,34 @@
     }
   });
 
+  // ---- a task's "more" menu, on phones ----
+  function closeTaskMenus() {
+    var closed = false;
+    document.querySelectorAll('.task-row.menu-open').forEach(function (row) {
+      row.classList.remove('menu-open');
+      row.querySelector('.task-more').setAttribute('aria-expanded', 'false');
+      closed = true;
+    });
+    if (closed) flushPending();
+  }
+
+  document.addEventListener('click', function (e) {
+    var more = e.target.closest('.task-more');
+    if (more) {
+      var row = more.closest('.task-row');
+      var opening = !row.classList.contains('menu-open');
+      closeTaskMenus();
+      if (opening) {
+        row.classList.add('menu-open');
+        more.setAttribute('aria-expanded', 'true');
+      }
+      return;
+    }
+    var inMenu = e.target.closest('.task-row.menu-open .task-actions');
+    // Anything but opening the assign list inside the menu is done with it.
+    if (!inMenu || !e.target.closest('[data-bs-toggle="dropdown"]')) closeTaskMenus();
+  }, true);
+
   // ---- inline editing ----
   document.addEventListener('click', function (e) {
     // "Show more" fetches the longer page and swaps it in, so the tasks you
@@ -805,7 +836,7 @@
         var input = scope.querySelector('[data-edit-form] input[type=text]');
         if (input) { input.focus(); input.select(); }
       } else {
-        flushPending();
+        stopEditing(scope);
       }
       return;
     }
@@ -844,10 +875,24 @@
     }
   });
 
+  // stopEditing puts the cursor back where the edit started (the pencil, or
+  // on a phone the task's "more" button), rather than in a form that is no
+  // longer on screen, and lets through live updates held back meanwhile.
+  function stopEditing(scope) {
+    scope.classList.remove('is-editing');
+    var back = scope.querySelector('[data-edit-view] [data-edit-toggle]');
+    if (!back || back.offsetParent === null) back = scope.querySelector('.task-more');
+    if (back && back.offsetParent !== null) back.focus();
+    else if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    flushPending();
+  }
+
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    var openMenu = document.querySelector('.task-row.menu-open .task-more');
+    if (openMenu) { closeTaskMenus(); openMenu.focus(); return; }
     var scope = e.target.closest && e.target.closest('.is-editing');
-    if (scope) { scope.classList.remove('is-editing'); flushPending(); }
+    if (scope) stopEditing(scope);
   });
 
   // ---- "+" next to Lists: reveal an inline field for a new list's name ----

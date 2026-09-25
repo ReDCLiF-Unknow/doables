@@ -138,7 +138,8 @@ font down to the icons the templates actually use (8KB rather than 844KB).
 
 The layout adapts to the screen: on phones and tablets the sidebar becomes a hamburger menu and a **bottom tab bar**
 (Overview, Today with its badge, and your profile) appears; quick-add is a single line with a details button for the
-description and due date; touch targets are at least 44px; inputs are 16px so iPhones don't zoom in when you tap them.
+description and due date; a task's actions (comment, assign, edit, delete) fold into one **⋯** button, so its title
+gets the width of the screen; touch targets are at least 44px; inputs are 16px so iPhones don't zoom in when you tap them.
 
 It is also **installable**: in Chrome/Edge choose *Install*, on iOS Safari *Share → Add to Home Screen*. You get an icon and a
 window without browser chrome. There is no service worker, so it needs a connection to your server (it is not usable
