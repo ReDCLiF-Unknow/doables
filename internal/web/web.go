@@ -361,6 +361,14 @@ func (s *Server) CloseStreams() { s.hub.close() }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// What comes back depends on whether the browser takes gzip, so a cache
+	// between us must not hand one kind to the other.
+	w.Header().Add("Vary", "Accept-Encoding")
+	if wantsGzip(r) {
+		gw := &gzipResponse{ResponseWriter: w}
+		defer gw.finish()
+		w = gw
+	}
 	if err := s.sameOrigin.Check(r); err != nil {
 		http.Error(w, "refused: that request came from another site", http.StatusForbidden)
 		return
