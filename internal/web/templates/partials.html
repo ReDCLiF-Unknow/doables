@@ -166,6 +166,9 @@
     @media (max-width: 991.98px) {
       /* keep content and toasts clear of the tab bar (and the home indicator) */
       .page-wrapper { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+      /* ...and when the browser scrolls something into view, such as the comment
+         box it has just focused, stop short of the bar rather than under it */
+      html { scroll-padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
       #toasts { bottom: calc(76px + env(safe-area-inset-bottom)); }
     }
     @media (max-width: 767.98px) {

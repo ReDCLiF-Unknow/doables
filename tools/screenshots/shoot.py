@@ -123,7 +123,7 @@ class API:
 
 def seed(api):
     """Fill an empty database with a shared list worth photographing, and
-    return the owner's token. Dates are relative, so "Yesterday", "Today" and
+    return everyone's tokens by name (Alex owns the lists). Dates are relative, so "Yesterday", "Today" and
     "Tomorrow" are always right whenever this is run."""
     today = date.today()
     day = lambda n: (today + timedelta(days=n)).isoformat()
@@ -169,7 +169,7 @@ def seed(api):
     task(flat, alex, "Book a van", "", day(3), 1)
 
     task(lists["Reading"]["id"], alex, "Finish the Go book", "Chapter 12 onwards", day(3), 1)
-    return alex
+    return people
 
 
 def page_target(port):
@@ -241,7 +241,7 @@ def main():
         wait_for(base + "/welcome", "the server")
 
         print("seeding the demo data")
-        token = seed(API(base))
+        token = seed(API(base))["Alex"]
 
         print("starting Chrome")
         browser = subprocess.Popen(

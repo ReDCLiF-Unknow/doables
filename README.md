@@ -12,6 +12,12 @@ One binary serves everything, including its own CSS, JavaScript and fonts, so a 
 reaches nothing but your own server: no CDN learns who is using your lists, and the app works
 on a network with no way out.
 
+Everyone sharing a list sees the same thing at the same time. Sam adds a task on his phone and it
+is on Alex's laptop at once; Alex ticks one off and Sam sees it done; Sam asks something and Alex
+can't miss it:
+
+<img alt="Two screens side by side. Sam, on a phone, adds a task and it appears on Alex's laptop; Alex ticks a task off and it shows as done on Sam's phone; Sam comments on a task and Alex's screen highlights it until Alex opens the conversation" src="docs/live.gif">
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/list-dark.png">
   <img alt="A shared list in Doables: tasks with due dates, whose job each one is, who added it and who finished it" src="docs/list-light.png">
@@ -256,6 +262,12 @@ python tools/screenshots/shoot.py
 It starts a server on a spare port, fills it with a shared list, photographs it with
 headless Chrome and writes the PNGs into `docs/`, cleaning up after itself. It needs Go,
 Chrome and `python -m pip install websockets`.
+
+The animation at the top is `python tools/screenshots/livegif.py`, which also needs
+`python -m pip install pillow`. It drives two Chromes, one each for Alex and Sam, and writes
+`docs/live.gif`. It is a storyboard, not a screen recording: each frame is taken once the page
+shows what it is meant to, so the result is the same on any machine. What reaches the other
+screen still gets there through the app's own live updates.
 
 ## Who is downloading it
 
