@@ -20,7 +20,10 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /ou
 # and look around when something misbehaves.
 FROM alpine:3.21
 
-RUN adduser -D -u 10001 doables \
+# Notifications go out to browsers' push services over HTTPS, so the image
+# has to trust the certificates they present.
+RUN apk add --no-cache ca-certificates \
+ && adduser -D -u 10001 doables \
  && mkdir -p /data \
  && chown doables:doables /data
 

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"doables/internal/push"
 	"doables/internal/store"
 )
 
@@ -49,6 +51,19 @@ func serveManifest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	io.WriteString(w, manifestJSON)
+}
+
+// serveServiceWorker serves the script that shows notifications. Browsers
+// check it for updates themselves; no-cache makes them always ask.
+func serveServiceWorker(w http.ResponseWriter, r *http.Request) {
+	js, err := staticFS.ReadFile("static/sw.js")
+	if err != nil {
+		http.Error(w, "missing", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(js)
 }
 
 const cookieName = "doables_token"
@@ -317,7 +332,20 @@ type Server struct {
 	demoSeed func(store.User) (int64, error)
 	// now is the time, which tests move on to see a day pass.
 	now func() time.Time
+	// push sends notifications to people's browsers; nil when they are
+	// switched off (and in a demo, where the other people are pretend).
+	push Pusher
 }
+
+// Pusher is what the server needs from package push.
+type Pusher interface {
+	PublicKey() string
+	Accepts(endpoint string) bool
+	Notify(users []int64, msg push.Message)
+}
+
+// SetPush turns notifications on.
+func (s *Server) SetPush(p Pusher) { s.push = p }
 
 // SetDemo turns the server into a public demo. Everyone who picks a name is
 // given seed's example lists to play with, and the pages say that nothing
@@ -393,6 +421,8 @@ func (s *Server) routes() {
 		files.ServeHTTP(w, r)
 	})
 	s.mux.HandleFunc("GET /manifest.webmanifest", serveManifest)
+	// The service worker has to live at the root to look after every page.
+	s.mux.HandleFunc("GET /sw.js", serveServiceWorker)
 
 	// Sign-in and sharing
 	s.mux.HandleFunc("GET /welcome", s.welcomeGet)
@@ -404,6 +434,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /me/token", s.authed(s.meToken))
 	s.mux.HandleFunc("POST /me/token/saved", s.authed(s.meTokenSaved))
 	s.mux.HandleFunc("POST /me", s.authed(s.mePost))
+	s.mux.HandleFunc("POST /me/push", s.authed(s.mePushOn))
+	s.mux.HandleFunc("POST /me/push/delete", s.authed(s.mePushOff))
+	s.mux.HandleFunc("POST /me/push/test", s.authed(s.mePushTest))
+	s.mux.HandleFunc("POST /me/notifications", s.authed(s.meNotifyPrefs))
 
 	// HTML UI
 	s.mux.HandleFunc("GET /{$}", s.authed(s.pageIndex))
@@ -739,6 +773,185 @@ func (s *Server) mePost(w http.ResponseWriter, r *http.Request, u *store.User) {
 	http.Redirect(w, r, backTo(r, "/"), http.StatusSeeOther)
 }
 
+// ---- notifications ----------------------------------------------------
+
+// mePushOn keeps a browser's permission to be notified, after the person
+// using it said yes. The browser posts its subscription as it gives it.
+func (s *Server) mePushOn(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if s.push == nil {
+		writeError(w, http.StatusNotFound, "notifications are switched off on this server")
+		return
+	}
+	var in struct {
+		Endpoint string `json:"endpoint"`
+		Keys     struct {
+			P256dh string `json:"p256dh"`
+			Auth   string `json:"auth"`
+		} `json:"keys"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !s.push.Accepts(in.Endpoint) {
+		writeError(w, http.StatusBadRequest, "that is not a push service this server sends notifications through")
+		return
+	}
+	// A P-256 public key, uncompressed, and a 16-byte secret: anything else
+	// could never be encrypted for, and would only fail later, quietly.
+	if k, err := b64url(in.Keys.P256dh); err != nil || len(k) != 65 || k[0] != 4 {
+		writeError(w, http.StatusBadRequest, "the subscription's key is not one a browser would give")
+		return
+	}
+	if a, err := b64url(in.Keys.Auth); err != nil || len(a) != 16 {
+		writeError(w, http.StatusBadRequest, "the subscription's secret is not one a browser would give")
+		return
+	}
+	err := s.store.SavePushSubscription(store.PushSubscription{
+		UserID: u.ID, Endpoint: in.Endpoint, P256dh: in.Keys.P256dh, Auth: in.Keys.Auth})
+	if err != nil {
+		s.respond(w, 0, nil, err)
+		return
+	}
+	// Push services want a way to reach whoever runs a server that sends
+	// them things; the address people use it at will do.
+	if isHTTPS(r) {
+		if err := s.store.NotePushContact(baseURL(r)); err != nil {
+			log.Printf("push: %v", err)
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// mePushOff forgets a browser, when its owner turns notifications off in it.
+func (s *Server) mePushOff(w http.ResponseWriter, r *http.Request, u *store.User) {
+	var in struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.store.RemovePushSubscription(u.ID, in.Endpoint); err != nil {
+		s.respond(w, 0, nil, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// mePushTest sends the caller a notification, to see that they arrive.
+func (s *Server) mePushTest(w http.ResponseWriter, r *http.Request, u *store.User) {
+	if s.push == nil {
+		writeError(w, http.StatusNotFound, "notifications are switched off on this server")
+		return
+	}
+	s.push.Notify([]int64{u.ID}, push.Message{
+		Title: "Notifications are on",
+		Body:  "This is how Doables will tell you about new comments, and tasks given to you.",
+		URL:   "/", Tag: "test",
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// meNotifyPrefs changes what the caller is notified about.
+func (s *Server) meNotifyPrefs(w http.ResponseWriter, r *http.Request, u *store.User) {
+	p := store.NotifyPrefs{
+		Comments: r.FormValue("comments") != "",
+		Assigned: r.FormValue("assigned") != "",
+		Added:    r.FormValue("added") != "",
+	}
+	if err := s.store.SetNotifyPrefs(u.ID, p); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, backTo(r, "/"), http.StatusSeeOther)
+}
+
+// b64url decodes base64url with or without padding, as browsers send either.
+func b64url(v string) ([]byte, error) {
+	return base64.RawURLEncoding.DecodeString(strings.TrimRight(v, "="))
+}
+
+// clip shortens text for a notification, which shows a line or two at most.
+func clip(text string, max int) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if utf8.RuneCountInString(text) <= max {
+		return text
+	}
+	r := []rune(text)
+	return strings.TrimSpace(string(r[:max-1])) + "…"
+}
+
+func nameOf(u *store.User) string {
+	if u == nil {
+		return "Someone"
+	}
+	return u.Name
+}
+
+func actorID(u *store.User) int64 {
+	if u == nil {
+		return 0
+	}
+	return u.ID
+}
+
+// notify sends msg to the people on listID who want to hear about kind,
+// leaving out whoever did it; only, when set, narrows it to one person.
+func (s *Server) notify(kind store.Notice, listID int64, actor *store.User, only int64, msg push.Message) {
+	if s.push == nil {
+		return
+	}
+	ids, err := s.store.ToNotify(kind, listID, actorID(actor))
+	if err != nil {
+		log.Printf("push: %v", err)
+		return
+	}
+	if only != 0 {
+		if !slices.Contains(ids, only) {
+			return
+		}
+		ids = []int64{only}
+	}
+	if len(ids) > 0 {
+		s.push.Notify(ids, msg)
+	}
+}
+
+// announceComment tells a list's people what someone said about a task,
+// with a link that opens the conversation.
+func (s *Server) announceComment(actor *store.User, t store.Task, c store.Comment) {
+	s.notify(store.NoticeComment, t.ListID, actor, 0, push.Message{
+		Title: nameOf(actor) + " on “" + clip(t.Title, 60) + "”",
+		Body:  clip(c.Body, 180),
+		URL:   listPath(t.ListID) + "#thread-" + strconv.FormatInt(t.ID, 10),
+		Tag:   "comment-" + strconv.FormatInt(t.ID, 10),
+	})
+}
+
+// announceAssigned tells someone they have been given a task, unless they
+// gave it to themselves or already had it.
+func (s *Server) announceAssigned(actor *store.User, before, after store.Task) {
+	if after.AssigneeID == 0 || after.AssigneeID == before.AssigneeID || after.AssigneeID == actorID(actor) {
+		return
+	}
+	s.notify(store.NoticeAssigned, after.ListID, actor, after.AssigneeID, push.Message{
+		Title: nameOf(actor) + " gave you “" + clip(after.Title, 60) + "”",
+		Body:  "In " + after.ListName,
+		URL:   listPath(after.ListID),
+		Tag:   "assigned-" + strconv.FormatInt(after.ID, 10),
+	})
+}
+
+// announceAdded tells a list's people about a new task. Several in a row
+// replace each other rather than piling up.
+func (s *Server) announceAdded(actor *store.User, t store.Task) {
+	s.notify(store.NoticeAdded, t.ListID, actor, 0, push.Message{
+		Title: nameOf(actor) + " added “" + clip(t.Title, 60) + "”",
+		Body:  "To " + t.ListName,
+		URL:   listPath(t.ListID),
+		Tag:   "added-" + strconv.FormatInt(t.ListID, 10),
+	})
+}
+
 // ---- HTML UI ----------------------------------------------------------
 
 type pageData struct {
@@ -773,6 +986,10 @@ type pageData struct {
 	Unread       map[int64]store.Unread
 	UnreadByList map[int64]int
 	UnreadTotal  int
+	// PushKey is what a browser needs to turn notifications on, empty when
+	// they are switched off; Notify is what this person wants them about.
+	PushKey string
+	Notify  store.NotifyPrefs
 }
 
 // taskGroup is one section of the Today view.
@@ -802,6 +1019,12 @@ func (s *Server) basePage(r *http.Request, u *store.User, view string) (pageData
 	d.UnreadByList = store.UnreadByList(d.Unread)
 	for _, n := range d.UnreadByList {
 		d.UnreadTotal += n
+	}
+	if s.push != nil {
+		d.PushKey = s.push.PublicKey()
+		if d.Notify, err = s.store.NotifyPrefs(u.ID); err != nil {
+			return d, err
+		}
 	}
 	return d, nil
 }
@@ -1104,10 +1327,13 @@ func (s *Server) formAddTask(w http.ResponseWriter, r *http.Request, u *store.Us
 			title = strings.TrimRight(title, " ") + " #" + tag
 		}
 	}
-	_, err := s.store.AddTask(id, u.ID, title, r.FormValue("description"), r.FormValue("due"))
+	t, err := s.store.AddTask(id, u.ID, title, r.FormValue("description"), r.FormValue("due"))
 	if err != nil && !errors.Is(err, store.ErrInvalid) {
 		s.fail(w, err)
 		return
+	}
+	if err == nil {
+		s.announceAdded(u, t)
 	}
 	http.Redirect(w, r, backTo(r, listPath(id)), http.StatusSeeOther)
 }
@@ -1170,9 +1396,13 @@ func (s *Server) formAssignTask(w http.ResponseWriter, r *http.Request, u *store
 			return
 		}
 	}
-	if _, err := s.store.AssignTask(id, assignee); err != nil && !errors.Is(err, store.ErrInvalid) {
+	after, err := s.store.AssignTask(id, assignee)
+	if err != nil && !errors.Is(err, store.ErrInvalid) {
 		s.fail(w, err)
 		return
+	}
+	if err == nil {
+		s.announceAssigned(u, t, after)
 	}
 	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
 }
@@ -1189,9 +1419,13 @@ func (s *Server) formAddComment(w http.ResponseWriter, r *http.Request, u *store
 		s.htmlErr(w, r, err)
 		return
 	}
-	if _, err := s.store.AddComment(id, u.ID, r.FormValue("body")); err != nil && !errors.Is(err, store.ErrInvalid) {
+	c, err := s.store.AddComment(id, u.ID, r.FormValue("body"))
+	if err != nil && !errors.Is(err, store.ErrInvalid) {
 		s.fail(w, err)
 		return
+	}
+	if err == nil {
+		s.announceComment(u, t, c)
 	}
 	http.Redirect(w, r, backTo(r, listPath(t.ListID)), http.StatusSeeOther)
 }
@@ -1467,6 +1701,9 @@ func (s *Server) apiAddTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := s.store.AddTask(id, userID(r), in.Title, in.Description, in.DueDate)
+	if err == nil {
+		s.announceAdded(userFrom(r), t)
+	}
 	s.respond(w, http.StatusCreated, t, err)
 }
 
@@ -1492,12 +1729,12 @@ func (s *Server) apiPatchTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, `provide at least one of "done", "title", "description", "due_date", "assignee_id"`)
 		return
 	}
-	if _, _, err := s.store.TaskAccess(id, userID(r)); err != nil {
+	before, _, err := s.store.TaskAccess(id, userID(r))
+	if err != nil {
 		s.respond(w, 0, nil, err)
 		return
 	}
 	var t store.Task
-	var err error
 	if in.Title != nil || in.Description != nil || in.DueDate != nil {
 		t, err = s.store.UpdateTask(id, store.TaskUpdate{Title: in.Title, Description: in.Description, DueDate: in.DueDate})
 	}
@@ -1506,6 +1743,9 @@ func (s *Server) apiPatchTask(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, store.ErrInvalid) {
 			writeError(w, http.StatusBadRequest, "that person is not on this list")
 			return
+		}
+		if err == nil {
+			s.announceAssigned(userFrom(r), before, t)
 		}
 	}
 	if err == nil && in.Done != nil {
@@ -1551,11 +1791,15 @@ func (s *Server) apiAddComment(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if _, _, err := s.store.TaskAccess(id, userID(r)); err != nil {
+	t, _, err := s.store.TaskAccess(id, userID(r))
+	if err != nil {
 		s.respond(w, 0, nil, err)
 		return
 	}
 	c, err := s.store.AddComment(id, userID(r), in.Body)
+	if err == nil {
+		s.announceComment(userFrom(r), t, c)
+	}
 	s.respond(w, http.StatusCreated, c, err)
 }
 

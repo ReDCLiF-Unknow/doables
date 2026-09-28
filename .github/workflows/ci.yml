@@ -90,6 +90,14 @@ jobs:
           curl -sf http://localhost:8080/static/vendor/tabler.min.css > /dev/null
           echo "the image starts and serves the app"
 
+          # Notifications reach phones through push services over HTTPS, and
+          # without trusted certificates in the image they would fail quietly.
+          docker exec doables-test test -s /etc/ssl/certs/ca-certificates.crt || {
+            echo "::error::the image has no CA certificates, so it cannot send notifications"
+            exit 1
+          }
+          echo "the image can make HTTPS connections for notifications"
+
           # It should also stop when asked. An event stream is a response that
           # never ends, so it is what would hold a shutdown open until the
           # runtime lost patience and killed the process.

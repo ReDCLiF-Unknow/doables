@@ -189,6 +189,16 @@ CREATE TABLE IF NOT EXISTS comments (
 	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS comments_task_id ON comments(task_id);
+-- Browsers that asked to be sent notifications (see push.go).
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	endpoint   TEXT NOT NULL UNIQUE,
+	p256dh     TEXT NOT NULL,
+	auth       TEXT NOT NULL,
+	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_user_id ON push_subscriptions(user_id);
 -- The newest comment each person has seen on each task (see unread.go).
 CREATE TABLE IF NOT EXISTS comment_reads (
 	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -258,6 +268,11 @@ func (s *Store) SetNotifier(fn func(userIDs []int64, all bool)) { s.notify = fn 
 func (s *Store) migrate() error {
 	for _, c := range []struct{ table, column, def string }{
 		{"users", "token_saved", "INTEGER NOT NULL DEFAULT 0"},
+		// What each person wants notifications about (see push.go). New
+		// tasks on a busy shared list would be a lot, so that one starts off.
+		{"users", "notify_comments", "INTEGER NOT NULL DEFAULT 1"},
+		{"users", "notify_assigned", "INTEGER NOT NULL DEFAULT 1"},
+		{"users", "notify_added", "INTEGER NOT NULL DEFAULT 0"},
 		{"lists", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"},
 		{"lists", "invite_code", "TEXT"},
 		{"lists", "deleted_at", "TIMESTAMP"},

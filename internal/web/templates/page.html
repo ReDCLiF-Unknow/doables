@@ -492,6 +492,29 @@
           </div>
         </form>
 
+        {{if .PushKey}}
+        <hr class="my-4">
+
+        <!-- Notifications are per device: this browser is on or off, whatever the others are. -->
+        <h6 class="mb-1"><i class="ti ti-bell me-1"></i>Notifications</h6>
+        <div id="push-panel" data-key="{{.PushKey}}">
+          <p class="text-secondary small mb-2" data-push-state>Checking this device…</p>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button" class="btn btn-primary d-none" id="push-on"><i class="ti ti-bell me-1"></i>Turn on for this device</button>
+            <button type="button" class="btn d-none" id="push-off"><i class="ti ti-bell-off me-1"></i>Turn off for this device</button>
+            <button type="button" class="btn btn-ghost-secondary d-none" id="push-test">Send a test</button>
+          </div>
+          <form method="post" action="/me/notifications" data-inplace data-autosubmit data-toast="Saved">
+            <input type="hidden" name="next" value="{{.Path}}">
+            <div class="small text-secondary mb-1">Tell me when someone:</div>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="comments" value="on"{{if .Notify.Comments}} checked{{end}}><span class="form-check-label">comments on a task in my lists</span></label>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="assigned" value="on"{{if .Notify.Assigned}} checked{{end}}><span class="form-check-label">gives me a task</span></label>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="added" value="on"{{if .Notify.Added}} checked{{end}}><span class="form-check-label">adds a task to a list I share</span></label>
+          </form>
+          <div class="form-hint">Notifications travel through your browser maker's push service (Google, Mozilla or Apple), encrypted so that it cannot read them. Nothing is sent until you turn them on.</div>
+        </div>
+        {{end}}
+
         <hr class="my-4">
 
         <h6 class="mb-1"><i class="ti ti-key me-1"></i>Your sign-in token</h6>
@@ -775,7 +798,7 @@
 
   // Ticking a checkbox saves straight away.
   document.addEventListener('change', function (e) {
-    if (e.target.matches && e.target.matches('.task-check')) {
+    if (e.target.matches && (e.target.matches('.task-check') || e.target.matches('form[data-autosubmit] input'))) {
       var form = e.target.form;
       if (form.requestSubmit) form.requestSubmit(); else form.submit();
     }
@@ -921,6 +944,115 @@
       if (addInput.value === '' && e.relatedTarget !== addBtn) setAdding(false);
     });
   }
+
+  // ---- notifications on this device ----
+  // A notification that is tapped while Doables is open elsewhere is sent to
+  // that window, rather than opening another.
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (!e.data || !e.data.navigate) return;
+      var to = new URL(e.data.navigate, location.origin);
+      if (to.origin !== location.origin) return;
+      if (to.pathname + to.search === location.pathname + location.search && to.hash) {
+        history.replaceState(null, '', to.hash);
+        openThreadFromHash();
+      } else {
+        location.href = to.href;
+      }
+    });
+  }
+
+  var pushPanel = document.getElementById('push-panel');
+  if (pushPanel) (function () {
+    var key = pushPanel.getAttribute('data-key');
+    var stateText = pushPanel.querySelector('[data-push-state]');
+    var onBtn = document.getElementById('push-on');
+    var offBtn = document.getElementById('push-off');
+    var testBtn = document.getElementById('push-test');
+    var registration = null;
+
+    // on: true (show Off and Test), false (show On), or null (show neither).
+    function show(text, on) {
+      stateText.textContent = text;
+      onBtn.classList.toggle('d-none', on !== false);
+      offBtn.classList.toggle('d-none', on !== true);
+      testBtn.classList.toggle('d-none', on !== true);
+    }
+    function sendJSON(url, body) {
+      return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (res) {
+          if (res.ok) return;
+          return res.json().catch(function () { return {}; }).then(function (b) { throw new Error(b.error || ('HTTP ' + res.status)); });
+        });
+    }
+    function keyBytes(b64) {
+      var raw = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b64.length % 4) % 4));
+      var out = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    var iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var installed = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    if (!window.isSecureContext) {
+      show('Notifications need this site to be reached over HTTPS.', null);
+      return;
+    }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      show(iOS && !installed
+        ? 'On an iPhone or iPad, add Doables to your Home Screen first (Share, then Add to Home Screen), and turn them on from there.'
+        : 'This browser cannot show notifications.', null);
+      return;
+    }
+
+    navigator.serviceWorker.register('/sw.js').then(function (reg) {
+      registration = reg;
+      return reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (Notification.permission === 'denied') {
+        show('Notifications are blocked for this site. You can allow them in your browser\'s site settings.', null);
+      } else if (sub && Notification.permission === 'granted') {
+        // Tell the server again: it may have been someone else's browser
+        // before, or forgotten after a long time without being used.
+        sendJSON('/me/push', sub.toJSON()).catch(function () {});
+        show('On for this device.', true);
+      } else {
+        show('Off for this device.', false);
+      }
+    }).catch(function () { show('This browser cannot show notifications here.', null); });
+
+    onBtn.addEventListener('click', function () {
+      onBtn.disabled = true;
+      Notification.requestPermission().then(function (permission) {
+        if (permission !== 'granted') {
+          show(permission === 'denied'
+            ? 'Notifications are blocked for this site. You can allow them in your browser\'s site settings.'
+            : 'Off for this device.', permission === 'denied' ? null : false);
+          return;
+        }
+        return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) })
+          .then(function (sub) {
+            return sendJSON('/me/push', sub.toJSON()).catch(function (err) { sub.unsubscribe(); throw err; });
+          })
+          .then(function () { show('On for this device.', true); });
+      }).catch(function (err) {
+        show('Could not turn them on: ' + err.message, false);
+      }).then(function () { onBtn.disabled = false; });
+    });
+
+    offBtn.addEventListener('click', function () {
+      registration.pushManager.getSubscription().then(function (sub) {
+        if (!sub) return;
+        return sendJSON('/me/push/delete', { endpoint: sub.endpoint }).then(function () { return sub.unsubscribe(); });
+      }).then(function () { show('Off for this device.', false); })
+        .catch(function (err) { show('Could not turn them off: ' + err.message, true); });
+    });
+
+    testBtn.addEventListener('click', function () {
+      sendJSON('/me/push/test', {}).then(function () { toast('Sent. It should arrive in a moment.', null, 4000); })
+        .catch(function (err) { toast('Could not send it: ' + err.message); });
+    });
+  })();
 
   // ---- profile dialog: the token is fetched only when asked for, and forgotten on close ----
   var tokenInput = document.getElementById('token');

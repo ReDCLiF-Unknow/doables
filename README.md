@@ -10,7 +10,8 @@ Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
 
 One binary serves everything, including its own CSS, JavaScript and fonts, so a page load
 reaches nothing but your own server: no CDN learns who is using your lists, and the app works
-on a network with no way out.
+on a network with no way out. The one exception is notifications, which nobody gets until they
+turn them on (see [Notifications](#notifications)).
 
 Everyone sharing a list sees the same thing at the same time. Sam adds a task on his phone and it
 is on Alex's laptop at once; Alex ticks one off and Sam sees it done; Sam asks something and Alex
@@ -148,8 +149,42 @@ description and due date; a task's actions (comment, assign, edit, delete) fold 
 gets the width of the screen; touch targets are at least 44px; inputs are 16px so iPhones don't zoom in when you tap them.
 
 It is also **installable**: in Chrome/Edge choose *Install*, on iOS Safari *Share → Add to Home Screen*. You get an icon and a
-window without browser chrome. There is no service worker, so it needs a connection to your server (it is not usable
-offline). Installing from a non-`localhost` address needs HTTPS.
+window without browser chrome. It needs a connection to your server (it is not usable offline). Installing from a
+non-`localhost` address needs HTTPS.
+
+## Notifications
+
+Doables can tell you when something happens while you are not looking: a notification on your phone or computer,
+which opens the task when you tap it. In your **profile**, press **Turn on for this device** and let the browser
+show them; each device is turned on separately. Then choose what about:
+
+- someone **comments** on a task in one of your lists (on to begin with)
+- someone **gives you a task** (on to begin with)
+- someone **adds a task** to a list you share (off to begin with, as a busy shopping list would be a lot)
+
+You are never told about what you did yourself. **Send a test** checks that they arrive.
+
+They need HTTPS (or `localhost`). On an iPhone or iPad they work once Doables is on the Home Screen (iOS 16.4 or later),
+and are turned on from there.
+
+**Where they go.** This is the one thing that leaves your server. Browsers only accept notifications through their
+maker's push service (Google's for Chrome and Edge on Android, Mozilla's for Firefox, Apple's for Safari, Microsoft's
+for Edge on Windows), so that is where the server sends them. Each one is encrypted for the one browser it is for, so
+the push service cannot read it; it learns that a notification was sent to that browser, and when. Nothing is sent
+for anyone who has not turned them on. The server only ever sends to those push services, over HTTPS, whatever a
+browser asks for.
+
+For whoever runs the server:
+
+| Variable | |
+|---|---|
+| `DOABLES_PUSH=off` | switch notifications off entirely; the option disappears from the profile (flag `-push=false`) |
+| `DOABLES_PUSH_CONTACT` | an email address or `https://` URL where push services can reach you, if they ever need to. By default it is the `https://` address the server is used at |
+| `DOABLES_PUSH_HOSTS` | other push services to allow, comma-separated, for a browser that uses one not listed above |
+
+The server makes its own key pair the first time and keeps it in the database. Every subscription is tied to it,
+so it lives and dies with your data: restore a backup and notifications keep working. A demo (`DOABLES_DEMO=1`)
+never sends any, as the other people in it are pretend.
 
 ## Sharing lists with other people
 

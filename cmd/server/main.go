@@ -9,19 +9,41 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"doables/internal/demo"
+	"doables/internal/push"
 	"doables/internal/store"
 	"doables/internal/web"
 )
+
+// pushDefault reads DOABLES_PUSH: notifications can be turned on by anyone
+// using the server unless it says off.
+func pushDefault(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "off", "0", "false", "no":
+		return false
+	}
+	return true
+}
+
+func splitList(v string) []string {
+	var out []string
+	for _, f := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' }) {
+		out = append(out, f)
+	}
+	return out
+}
 
 func main() {
 	addr := flag.String("addr", "localhost:8080", "address to listen on")
 	dbPath := flag.String("db", "doables.db", "path to the SQLite database file")
 	demoMode := flag.Bool("demo", os.Getenv("DOABLES_DEMO") != "",
 		"run as a public demo: every visitor gets example lists of their own, erased a day later (env DOABLES_DEMO)")
+	notifications := flag.Bool("push", pushDefault(os.Getenv("DOABLES_PUSH")),
+		"let people turn on notifications, sent through their browser's push service (env DOABLES_PUSH=off to disable)")
 	flag.Parse()
 
 	s, err := store.Open(*dbPath)
@@ -43,6 +65,16 @@ func main() {
 		app.SetDemo(func(u store.User) (int64, error) { return demo.Seed(s, u) })
 		go demo.Sweep(ctx, s, demo.Lifetime, 10*time.Minute)
 		log.Printf("demo mode: every visitor gets example lists, erased %.0f hours after they start", demo.Lifetime.Hours())
+	}
+	// In a demo the other people are pretend, so there is nobody to notify.
+	if *notifications && !*demoMode {
+		p, err := push.New(s, os.Getenv("DOABLES_PUSH_CONTACT"), splitList(os.Getenv("DOABLES_PUSH_HOSTS")))
+		if err != nil {
+			s.Close()
+			log.Fatalf("notifications: %v", err)
+		}
+		go p.Run(ctx)
+		app.SetPush(p)
 	}
 	srv := &http.Server{
 		Handler: app,
