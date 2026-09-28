@@ -674,6 +674,14 @@
     es.onopen = function () { if (opened) scheduleRefresh(); opened = true; }; // catch up after a reconnect
   }
 
+  // Some changes come from the clock, not from anyone: a finished task leaves
+  // To do a day after it was ticked, and at midnight "Tomorrow" becomes
+  // "Today". Nobody is told about those, so a page left open (an installed
+  // app can stay open for days) looks again every few minutes while it is on
+  // screen, and as soon as it comes back into view.
+  setInterval(function () { if (!document.hidden) scheduleRefresh(); }, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) scheduleRefresh(); });
+
   // ---- in-place form submits ----
   // POST the form, follow the redirect back to this page, and swap the result in.
   function post(url, params) {
