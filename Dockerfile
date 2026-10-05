@@ -18,7 +18,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /ou
 
 # Runtime: Alpine rather than scratch, so you can still `docker exec ... sh`
 # and look around when something misbehaves.
-FROM alpine:3.21
+FROM alpine:3.24
 
 # Notifications go out to browsers' push services over HTTPS, so the image
 # has to trust the certificates they present.
