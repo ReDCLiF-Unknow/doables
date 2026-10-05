@@ -128,7 +128,7 @@ jobs:
         id: img
         run: echo "ref=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/doables:${{ inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
 
       - name: Run the arm64 image
         run: |
@@ -185,7 +185,7 @@ jobs:
   compose:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: docker compose up
         run: |
