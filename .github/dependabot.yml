@@ -1,0 +1,28 @@
+# Dependabot opens a pull request when something Doables depends on has a new
+# release, and CI tests it like any other change. Updates arrive grouped, one
+# pull request at a time per kind, rather than one for every library.
+version: 2
+updates:
+  # Go modules: SQLite, the CLI's libraries, web push and what they use.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+
+  # The actions the workflows run.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The Go and Alpine images the Docker image is built from.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
