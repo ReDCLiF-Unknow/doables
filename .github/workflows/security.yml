@@ -22,11 +22,11 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The Go version in go.mod, so a fix in a newer Go release (the standard
       # library has vulnerabilities too) shows up here as a reason to move on.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
