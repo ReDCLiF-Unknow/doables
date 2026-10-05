@@ -87,9 +87,40 @@ go run ./cmd/server -addr localhost:9000 -db /path/to/doables.db
 ```
 
 SQLite is provided by the pure-Go `modernc.org/sqlite`, so no C compiler is needed. It runs in
-write-ahead logging mode, so reading carries on while somebody writes; back the database up with
-`sqlite3 doables.db ".backup out.db"` or while the server is stopped, rather than copying the file
-from under it. Databases from earlier versions are upgraded automatically on start-up.
+write-ahead logging mode, so reading carries on while somebody writes. Databases from earlier
+versions are upgraded automatically on start-up.
+
+## Backups
+
+Everything Doables knows is in one SQLite file. Don't copy that file while the server is running:
+the latest changes may still be in a second file beside it, and a copy taken mid-write can be torn.
+Ask the server for a copy instead. It is safe while the server is running, and checks the copy:
+
+```
+# Docker: the backup comes out of the container as a file on your machine
+docker exec doables doables-server -db /data/doables.db -backup - > doables-backup.db
+
+# Otherwise
+doables-server -db doables.db -backup doables-backup.db
+```
+
+It says what it saved (`backed up 3 people, 5 lists, 120 tasks, 14 comments (84 KB)`), never
+overwrites an existing file, and does not change the database it reads. Run it from cron for regular
+backups; a date in the name keeps several, as in `doables-$(date +%F).db`.
+
+To restore, stop the server, put the backup in place of the database (removing any `-wal` and `-shm`
+files beside the old one), and start it again. With Docker:
+
+```
+docker compose down
+docker run --rm -v doables_doables-data:/data -v "$PWD":/backup alpine \
+  sh -c 'rm -f /data/doables.db-wal /data/doables.db-shm && cp /backup/doables-backup.db /data/doables.db && chown -R 10001 /data'
+docker compose up -d
+```
+
+(The volume is called `<folder>_doables-data`, after the folder the compose file is in;
+`docker volume ls` lists them.) The notification keys are in the database too, so devices that had
+notifications on keep getting them after a restore.
 
 The stylesheets, scripts and fonts live in `internal/web/static/vendor/` and are compiled into
 the binary, so building needs nothing but Go. To change a version, edit the numbers at the top of

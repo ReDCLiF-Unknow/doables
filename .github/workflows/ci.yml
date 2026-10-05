@@ -102,6 +102,15 @@ jobs:
           # never ends, so it is what would hold a shutdown open until the
           # runtime lost patience and killed the process.
           token=$(curl -sf -X POST http://localhost:8080/api/users -d '{"name":"Watcher"}' | jq -r .token)
+
+          # The backup the README documents works inside the image, while the
+          # server is running.
+          docker exec doables-test doables-server -db /data/doables.db -backup - > backup.db
+          head -c 15 backup.db | grep -q "SQLite format 3" || {
+            echo "::error::the documented backup command did not produce a database"
+            exit 1
+          }
+          echo "backed up the running server: $(wc -c < backup.db) bytes"
           curl -sN -H "Authorization: Bearer $token" http://localhost:8080/events > /dev/null &
           sleep 2
           start=$(date +%s%N)
@@ -119,6 +128,23 @@ jobs:
           }
           echo "it shut down cleanly in ${ms}ms with an event stream still open"
           docker rm -f doables-test
+
+          # Restoring as the README says gives a working server with the
+          # backed-up data: the person made before the backup can sign in.
+          docker volume create restored > /dev/null
+          docker run --rm -v restored:/data -v "$PWD":/backup alpine \
+            sh -c 'rm -f /data/doables.db-wal /data/doables.db-shm && cp /backup/backup.db /data/doables.db && chown -R 10001 /data'
+          docker run -d --name doables-restored -p 8081:8080 -v restored:/data doables:test
+          for _ in $(seq 1 30); do curl -sf http://localhost:8081/welcome > /dev/null && break; sleep 1; done
+          name=$(curl -sf -H "Authorization: Bearer $token" http://localhost:8081/api/me | jq -r .name)
+          if [ "$name" != "Watcher" ]; then
+            echo "::error::after restoring the backup, the token signs in as '$name', not Watcher"
+            docker logs doables-restored
+            exit 1
+          fi
+          curl -sf -X POST -H "Authorization: Bearer $token" http://localhost:8081/api/lists -d '{"name":"After the restore"}' > /dev/null
+          echo "restored from the backup: Watcher can sign in, and the server takes new changes"
+          docker rm -f doables-restored > /dev/null
 
       - name: Log in to ghcr.io
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

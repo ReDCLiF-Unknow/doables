@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -37,6 +40,42 @@ func splitList(v string) []string {
 	return out
 }
 
+// runBackup copies the database at dbPath to dst, or to stdout when dst is
+// "-", and says what is in the copy on stderr, which keeps stdout for the
+// file itself:
+//
+//	docker exec doables doables-server -db /data/doables.db -backup - > doables-backup.db
+func runBackup(dbPath, dst string, stdout, stderr io.Writer) error {
+	if dst != "-" {
+		sum, err := store.Backup(dbPath, dst)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stderr, "backed up %s to %s\n", sum, dst)
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "doables-backup-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	tmp := filepath.Join(dir, "backup.db")
+	sum, err := store.Backup(dbPath, tmp)
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(tmp)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := io.Copy(stdout, f); err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "backed up %s\n", sum)
+	return nil
+}
+
 func main() {
 	addr := flag.String("addr", "localhost:8080", "address to listen on")
 	dbPath := flag.String("db", "doables.db", "path to the SQLite database file")
@@ -44,7 +83,16 @@ func main() {
 		"run as a public demo: every visitor gets example lists of their own, erased a day later (env DOABLES_DEMO)")
 	notifications := flag.Bool("push", pushDefault(os.Getenv("DOABLES_PUSH")),
 		"let people turn on notifications, sent through their browser's push service (env DOABLES_PUSH=off to disable)")
+	backup := flag.String("backup", "",
+		"write a copy of the database to this file and exit, or - for standard output; safe while the server is running")
 	flag.Parse()
+
+	if *backup != "" {
+		if err := runBackup(*dbPath, *backup, os.Stdout, os.Stderr); err != nil {
+			log.Fatalf("backup: %v", err)
+		}
+		return
+	}
 
 	s, err := store.Open(*dbPath)
 	if err != nil {
