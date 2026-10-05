@@ -4,7 +4,7 @@
 # The build stage always runs on the builder's own architecture and
 # cross-compiles for the target, so multi-arch images build in seconds
 # instead of crawling through emulation.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
