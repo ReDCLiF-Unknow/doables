@@ -48,6 +48,7 @@ jobs:
             echo "building $GOOS/$GOARCH"
             go build -o /dev/null ./cmd/server
             go build -o /dev/null ./cmd/doables
+            go build -o /dev/null ./cmd/discord
           done
 
   # Builds the image on every run so the Dockerfile cannot quietly rot, and
@@ -97,6 +98,14 @@ jobs:
             exit 1
           }
           echo "the image can make HTTPS connections for notifications"
+
+          # The Discord bot is in the image too. Without a token it can only
+          # say that it needs one, which shows it is there and runs.
+          docker exec doables-test doables-discord 2>&1 | grep -q DISCORD_TOKEN || {
+            echo "::error::the image has no working Discord bot"
+            exit 1
+          }
+          echo "the image carries the Discord bot"
 
           # It should also stop when asked. An event stream is a response that
           # never ends, so it is what would hold a shutdown open until the

@@ -4,6 +4,7 @@ go 1.26.9
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.60.1
@@ -13,6 +14,7 @@ require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect

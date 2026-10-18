@@ -78,6 +78,7 @@ jobs:
             echo "building $name"
             go build -trimpath -ldflags="-s -w" -o "$stage/doables-server$ext" ./cmd/server
             go build -trimpath -ldflags="-s -w" -o "$stage/doables$ext" ./cmd/doables
+            go build -trimpath -ldflags="-s -w" -o "$stage/doables-discord$ext" ./cmd/discord
             cp README.md LICENSE "$stage/"
             if [ "$GOOS" = windows ]; then
               (cd build && zip -qr "../dist/$name.zip" "$name")
@@ -129,7 +130,7 @@ jobs:
           ### A prebuilt binary
 
           Download the archive for your system below and unpack it, then run \`doables-server\`.
-          \`doables\` beside it is the command-line client.
+          \`doables\` beside it is the command-line client, and \`doables-discord\` the Discord bot.
 
           Nothing else is needed: the database is a SQLite file created on first run, and there
           is no runtime dependency to install. Databases from earlier versions are upgraded

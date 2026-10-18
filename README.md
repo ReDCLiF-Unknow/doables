@@ -6,9 +6,9 @@
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
 A small to-do list app you can share: Go, SQLite, `html/template`, and the [Tabler](https://tabler.io) UI + Tabler Icons.
-Includes a CLI (Cobra + Resty) that talks to the server's JSON API.
+Includes a CLI (Cobra + Resty) that talks to the server's JSON API, and a [Discord bot](#discord) for teams.
 
-One binary serves everything, including its own CSS, JavaScript and fonts, so a page load
+The server is one binary that serves everything, including its own CSS, JavaScript and fonts, so a page load
 reaches nothing but your own server: no CDN learns who is using your lists, and the app works
 on a network with no way out. The one exception is notifications, which nobody gets until they
 turn them on (see [Notifications](#notifications)).
@@ -240,6 +240,48 @@ gives their browser a secret token (in an `HttpOnly` cookie; only a hash is stor
 Anyone holding an invite link can join, so treat it like a password and reset it if it leaks. If you expose
 the server beyond your own network, put it behind HTTPS so tokens and cookies are protected. If you put it
 behind a reverse proxy, don't let the proxy buffer `/events` (the server sends `X-Accel-Buffering: no` for nginx).
+
+## Discord
+
+For a team that lives in Discord, the bot turns a channel into a task board, so everyone can
+see what needs doing and whose job each thing is, without leaving Discord. The tasks are kept in
+Doables, so they are on the web app, phones and the CLI as well.
+
+- `/taskboard` makes the channel a board (for people who can manage channels).
+- `/task` adds a task, optionally **for** somebody. It appears as a card with **Done** and **Assign**
+  buttons, and a thread under it for talking about it. Whoever is given a task is pinged in its thread.
+- What people write in a task's thread becomes a comment in Doables, and comments written in Doables
+  appear in the thread. A card keeps up with changes made in the web app too: ticked off, given to
+  someone else, or deleted.
+- `/tasks` lists what is left on the board, `/mine` what is yours on every board, and `/doables`
+  privately gives you your Doables sign-in, to see the same tasks in a browser.
+
+Nobody needs to sign up: the first time someone uses the bot, it makes them a Doables identity named
+as they are on the server, so the web app shows who added a task and who finished it. Who can see
+a board is up to Discord: make the channel visible to your staff only.
+
+**Setting it up**
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create an
+   application. Under **Bot**, press **Reset Token** and copy the token, and switch on
+   **Message Content Intent**, which lets thread replies become comments.
+2. Run the bot beside your Doables server. With the [compose file](compose.yaml), put
+   `DISCORD_TOKEN=<token>` in a file called `.env` beside it, then `docker compose --profile discord up -d`.
+   Or run the binary from a release: `DISCORD_TOKEN=<token> doables-discord -server http://localhost:8080`.
+3. The bot's log prints a link that adds it to a server, with the permissions it needs. Open it,
+   pick your server, then run `/taskboard` in your staff channel.
+
+| Variable | Flag | |
+|---|---|---|
+| `DISCORD_TOKEN` | | the bot's token (required) |
+| `DOABLES_SERVER` | `-server` | the Doables server, default `http://localhost:8080` |
+| `DOABLES_URL` | `-url` | the address people open Doables at, for links from Discord; leave it out if they can't reach it |
+| `DOABLES_DISCORD_DB` | `-db` | the bot's own database, default `doables-discord.db` |
+| `DISCORD_GUILD` | `-guild` | a server ID, to make the commands appear there at once while trying the bot out |
+
+The bot's database holds everyone's Doables sign-in, so keep it as private as Doables' own. Doables
+lets one address make ten new people in a row and then one a minute, and the bot is one address:
+on a big team's first day, someone may be asked to try again in a minute.
 
 ## CLI
 

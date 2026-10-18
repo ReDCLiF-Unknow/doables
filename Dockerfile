@@ -14,7 +14,8 @@ COPY . .
 ARG TARGETOS TARGETARCH
 ENV CGO_ENABLED=0
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/doables-server ./cmd/server \
- && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/doables ./cmd/doables
+ && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/doables ./cmd/doables \
+ && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/doables-discord ./cmd/discord
 
 # Runtime: Alpine rather than scratch, so you can still `docker exec ... sh`
 # and look around when something misbehaves.
@@ -27,7 +28,7 @@ RUN apk add --no-cache ca-certificates \
  && mkdir -p /data \
  && chown doables:doables /data
 
-COPY --from=build /out/doables-server /out/doables /usr/local/bin/
+COPY --from=build /out/doables-server /out/doables /out/doables-discord /usr/local/bin/
 
 USER doables
 WORKDIR /data

@@ -9,5 +9,27 @@ services:
       - doables-data:/data
     restart: unless-stopped
 
+  # The Discord bot, if you want one: put its token in a file called .env
+  # beside this one (DISCORD_TOKEN=...), then `docker compose --profile discord up -d`.
+  # See "Discord" in the README.
+  discord:
+    image: ghcr.io/redclif-unknow/doables:latest
+    container_name: doables-discord
+    profiles: [discord]
+    command: ["doables-discord", "-server", "http://doables:8080", "-db", "/data/doables-discord.db"]
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      # The address people open Doables at, for links from Discord; leave it
+      # empty if Doables is only reachable on this machine.
+      DOABLES_URL: ${DOABLES_URL:-}
+    volumes:
+      - discord-data:/data
+    depends_on: [doables]
+    # The image's health check asks for the web app, which this one doesn't serve.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
 volumes:
   doables-data:
+  discord-data:
